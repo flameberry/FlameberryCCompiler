@@ -1,3 +1,4 @@
+use flameberrycc::tokenizer::Tokenizer;
 use std::fs;
 
 fn run_tests(testpath: &str) {
@@ -21,7 +22,7 @@ fn run_tests(testpath: &str) {
 
         // Actual compilation stages
         let preprocessed_src = flameberrycc::preprocessor::preprocess(&testprogramsrc);
-        let tokens = flameberrycc::lexer::lex(&preprocessed_src);
+        let mut tokenizer = Tokenizer::new(&preprocessed_src);
 
         // Display output for debugging
         println!("{}:", testcasepath.display());
@@ -29,8 +30,12 @@ fn run_tests(testpath: &str) {
         println!("Preprocessed:\n{}", preprocessed_src);
 
         println!("Lexed:");
-        for tk in &tokens {
-            println!("{:?}", tk);
+        loop {
+            match tokenizer.next_token() {
+                Ok(Some(token)) => println!("{:?}", token),
+                Ok(None) => break,
+                Err(error) => panic!("{}", error),
+            }
         }
         println!();
     }
