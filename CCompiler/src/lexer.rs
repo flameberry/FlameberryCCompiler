@@ -44,48 +44,68 @@ pub fn lex(source: &str) -> Vec<TokenType> {
         if ch.is_whitespace() {
             cursor += 1;
         } else {
-            // Add Parenthesis Token
-            if ch == '(' || ch == ')' || ch == '{' || ch == '}' || ch == '[' || ch == ']' {
-                tokens.push(TokenType::Parenthesis(ch));
-                cursor += 1;
-            }
-            // Add Semicolon Token
-            else if ch == ';' {
-                tokens.push(TokenType::Semicolon(ch));
-                cursor += 1;
-            }
-            // Add Operator Token
-            else if ch == '+' || ch == '-' || ch == '*' || ch == '/' || ch == '%' {
-                tokens.push(TokenType::Operator(ch));
-                cursor += 1;
-            }
-            // Identify Symbol
-            else if is_symbol_start(ch) {
-                let last = cursor;
-
-                // Read the entire symbol
-                while cursor < source.len() && is_symbol(source.chars().nth(cursor).unwrap()) {
+            match ch {
+                '(' | ')' | '{' | '}' | '[' | ']' => {
+                    tokens.push(TokenType::Parenthesis(ch));
                     cursor += 1;
                 }
-
-                // Get the symbol string
-                let symbol = &source[last..cursor];
-                tokens.push(TokenType::Identifier(symbol.to_string()));
-            }
-            // Identify Numerics
-            else if is_numeric_start(ch) {
-                let last = cursor;
-
-                // Read the entire symbol
-                while cursor < source.len() && is_numeric(source.chars().nth(cursor).unwrap()) {
+                '+' | '-' | '*' | '/' | '%' => {
+                    tokens.push(TokenType::Operator(ch));
                     cursor += 1;
                 }
+                ';' => {
+                    tokens.push(TokenType::Semicolon(ch));
+                    cursor += 1;
+                }
+                _ => {
+                    // Identify Symbols and Keywords
+                    if is_symbol_start(ch) {
+                        let last = cursor;
 
-                // Get the symbol string
-                let numeric = &source[last..cursor];
-                tokens.push(TokenType::Numeric(numeric.to_string()));
-            } else {
-                panic!("Couldn't recognize token: {}", ch);
+                        // Read the entire symbol
+                        while cursor < source.len()
+                            && is_symbol(source.chars().nth(cursor).unwrap())
+                        {
+                            cursor += 1;
+                        }
+
+                        // Get the symbol string
+                        let symbol = &source[last..cursor];
+
+                        // Check if the symbol is a keyword
+                        match symbol {
+                            "return" => {
+                                tokens.push(TokenType::Keyword(Keyword::Return));
+                            }
+                            "void" => {
+                                tokens.push(TokenType::Keyword(Keyword::Void));
+                            }
+                            "int" => {
+                                tokens.push(TokenType::Keyword(Keyword::Int));
+                            }
+                            _ => {
+                                tokens.push(TokenType::Identifier(symbol.to_string()));
+                            }
+                        }
+                    }
+                    // Identify Numerics
+                    else if is_numeric_start(ch) {
+                        let last = cursor;
+
+                        // Read the entire symbol
+                        while cursor < source.len()
+                            && is_numeric(source.chars().nth(cursor).unwrap())
+                        {
+                            cursor += 1;
+                        }
+
+                        // Get the symbol string
+                        let numeric = &source[last..cursor];
+                        tokens.push(TokenType::Numeric(numeric.to_string()));
+                    } else {
+                        panic!("Couldn't recognize token: {}", ch);
+                    }
+                }
             }
         }
     }
