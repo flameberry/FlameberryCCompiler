@@ -1,5 +1,5 @@
 # Flameberry C Compiler (Written in Rust)
-Flameberry C compiler is primitive C compiler which is in early stages and the future plan is to make it a fully featured compiler with decent performance.
+Flameberry C compiler is primitive C (ISO 17 standard compliant) compiler which is in early stages and the future plan is to make it a fully featured compiler with decent performance.
 
 **Currently it supports:**
 1. Preprocessing C comments

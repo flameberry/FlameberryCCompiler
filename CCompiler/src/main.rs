@@ -1,5 +1,39 @@
+use flameberrycc::parser::Parser;
 use flameberrycc::tokenizer::Tokenizer;
-use std::fs;
+use std::{fs, time::Instant};
+
+fn compile(src: &str) {
+    let preprocessed_src = flameberrycc::preprocessor::preprocess(&src);
+    let mut tokenizer = Tokenizer::new(&preprocessed_src);
+
+    // Display output for debugging
+    // println!("Original:\n{}", src);
+    // println!("Preprocessed:\n{}", preprocessed_src);
+
+    // println!("Lexed:");
+    // loop {
+    //     match tokenizer.next_token() {
+    //         Ok(Some(token)) => println!("{:?}", token),
+    //         Ok(None) => break,
+    //         Err(error) => panic!("{}", error),
+    //     }
+    // }
+    // println!();
+
+    let mut parser = Parser::new(&mut tokenizer);
+    parser.parse();
+}
+
+fn compile_file(srcpath: &str) {
+    let src = fs::read_to_string(srcpath);
+    println!("{}:", srcpath);
+    compile(&src.unwrap_or_else(|err| {
+        panic!(
+            "Failed to read source file: {}: with error: {}",
+            srcpath, err
+        )
+    }));
+}
 
 fn run_tests(testpath: &str) {
     let directory =
@@ -20,28 +54,19 @@ fn run_tests(testpath: &str) {
             })
         };
 
-        // Actual compilation stages
-        let preprocessed_src = flameberrycc::preprocessor::preprocess(&testprogramsrc);
-        let mut tokenizer = Tokenizer::new(&preprocessed_src);
-
-        // Display output for debugging
-        println!("{}:", testcasepath.display());
-        println!("Original:\n{}", testprogramsrc);
-        println!("Preprocessed:\n{}", preprocessed_src);
-
-        println!("Lexed:");
-        loop {
-            match tokenizer.next_token() {
-                Ok(Some(token)) => println!("{:?}", token),
-                Ok(None) => break,
-                Err(error) => panic!("{}", error),
-            }
-        }
-        println!();
+        compile(&testprogramsrc);
     }
 }
 
 fn main() {
-    let testpath = "/Users/flameberry/Developer/writing-a-c-compiler-tests/tests/chapter_1/valid";
-    run_tests(testpath);
+    let start = Instant::now();
+
+    // let testpath = "/Users/flameberry/Developer/writing-a-c-compiler-tests/tests/chapter_1/valid";
+    // run_tests(testpath);
+
+    let testpath = "Sandbox/test.c";
+    compile_file(testpath);
+
+    let end = Instant::now() - start;
+    println!("Time taken: {:?}", end);
 }
