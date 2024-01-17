@@ -15,7 +15,8 @@ pub enum TokenType {
     Identifier(String),
     Integer(usize),
     Decimal(f64),
-    QuotedString(String),
+    Character(char),
+    StringLiteral(String),
     OpenBrace,
     CloseBrace,
     OpenParenthesis,
@@ -83,6 +84,24 @@ fn tokenize_number(src: &str) -> io::Result<(TokenType, usize)> {
     }
 }
 
+fn tokenize_char(src: &str) -> Result<(TokenType, usize), Error> {
+    let (ch, bytes) = iter_while(&src[1..], |ch| ch != '\'');
+
+    match ch.len() {
+        1 => Ok((TokenType::Character(ch.chars().next().unwrap()), bytes + 2)),
+        _ => Err(Error::from(ErrorKind::InvalidData)),
+    }
+}
+
+fn tokenize_string(src: &str) -> Result<(TokenType, usize), Error> {
+    let (stringliteral, bytes) = iter_while(&src[1..], |ch| ch != '"');
+
+    Ok((
+        TokenType::StringLiteral(stringliteral.to_string()),
+        bytes + 2,
+    ))
+}
+
 fn tokenize_identifier(src: &str) -> Result<(TokenType, usize), Error> {
     let (identifier, bytes) = iter_while(src, |ch| ch.is_alphanumeric() || ch == '_');
 
@@ -113,6 +132,8 @@ fn tokenize(src: &str) -> Result<(TokenType, usize), Error> {
         '*' => Ok((TokenType::Asterisk, 1)),
         '/' => Ok((TokenType::Slash, 1)),
         '%' => Ok((TokenType::Percent, 1)),
+        '\'' => Ok(tokenize_char(src)?),
+        '"' => Ok(tokenize_string(src)?),
         '0'..='9' => Ok(tokenize_number(src)?),
         next @ '_' | next if next.is_alphabetic() => Ok(tokenize_identifier(src)?),
         _ => Err(Error::from(ErrorKind::Unsupported)),

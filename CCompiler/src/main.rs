@@ -7,10 +7,10 @@ fn compile(src: &str) {
     let mut tokenizer = Tokenizer::new(&preprocessed_src);
 
     // Display output for debugging
-    // println!("Original:\n{}", src);
-    // println!("Preprocessed:\n{}", preprocessed_src);
+    println!("Original:\n{}", src);
+    println!("Preprocessed:\n{}", preprocessed_src);
 
-    // println!("Lexed:");
+    println!("Lexed:");
     // loop {
     //     match tokenizer.next_token() {
     //         Ok(Some(token)) => println!("{:?}", token),
@@ -18,7 +18,7 @@ fn compile(src: &str) {
     //         Err(error) => panic!("{}", error),
     //     }
     // }
-    // println!();
+    println!();
 
     let mut parser = Parser::new(&mut tokenizer);
     parser.parse();
