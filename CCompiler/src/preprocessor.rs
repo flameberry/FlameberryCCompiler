@@ -8,13 +8,14 @@ pub fn preprocess(source: &str) -> String {
         let trimmed = line.trim_start();
 
         // Ignore comments
-        if !trimmed.starts_with("//") {
-            out.push_str(line);
-            out.push('\n');
+        if trimmed.starts_with("//") {
         }
         // Expand the preprocessor macros
         else if trimmed.starts_with('#') {
             panic!("Preprocessor directives not supported yet!");
+        } else {
+            out.push_str(line);
+            out.push('\n');
         }
     }
     // Remove the unncessary '\n' at the end of the program
