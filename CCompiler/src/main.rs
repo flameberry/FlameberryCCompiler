@@ -10,18 +10,21 @@ fn compile(src: &str) {
     println!("Original:\n{}", src);
     println!("Preprocessed:\n{}", preprocessed_src);
 
-    println!("Lexed:");
-    loop {
-        match tokenizer.next_token() {
-            Ok(Some(token)) => println!("{:?}", token),
-            Ok(None) => break,
-            Err(error) => panic!("{}", error),
-        }
-    }
+    // println!("Lexed:");
+    // loop {
+    //     match tokenizer.next_token() {
+    //         Ok(Some(token)) => println!("{:?}", token),
+    //         Ok(None) => break,
+    //         Err(error) => panic!("{}", error),
+    //     }
+    // }
     println!();
 
-    // let mut parser = Parser::new(&mut tokenizer);
-    // parser.parse();
+    let mut parser = Parser::new(&mut tokenizer);
+    match parser.parse() {
+        Ok(translation_unit) => print!("Translation Unit: {:?}", translation_unit),
+        Err(err) => panic!("Parser failed with error: {}", err),
+    }
 }
 
 fn compile_file(srcpath: &str) {
@@ -64,7 +67,7 @@ fn main() {
     // let testpath = "/Users/flameberry/Developer/writing-a-c-compiler-tests/tests/chapter_1/valid";
     // run_tests(testpath);
 
-    let testpath = "Sandbox/return_2.c";
+    let testpath = "Sandbox/test.c";
     compile_file(testpath);
 
     let end = Instant::now() - start;

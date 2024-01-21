@@ -1,8 +1,11 @@
 //! Module for performing lexical analysis on source code.
 
+use regex::bytes;
+
+use crate::errors::CompilerError;
 use std::io::{self, Error, ErrorKind};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Keyword {
     Auto,
     Break,
@@ -20,6 +23,7 @@ pub enum Keyword {
     For,
     Goto,
     If,
+    Inline,
     Int,
     Long,
     Register,
@@ -38,12 +42,13 @@ pub enum Keyword {
     While,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenType {
+    None,
     Keyword(Keyword),
     Identifier(String),
-    Integer(usize),
-    Decimal(f64),
+    Integer(i64),
+    FloatingPoint(f64),
     Character(char),
     StringLiteral(String),
     OpenBrace,                 // {
@@ -109,11 +114,11 @@ where
     (&src[..cidx], cidx)
 }
 
-fn tokenize_number(src: &str) -> io::Result<(TokenType, usize)> {
+fn tokenize_number(src: &str) -> Result<(TokenType, usize), CompilerError> {
     let mut e = false;
     let mut dot = false;
     let mut minus = false;
-    let (decimal, bytes) = iter_while(src, |ch| match ch {
+    let (number, bytes) = iter_while(src, |ch| match ch {
         'e' => {
             if e {
                 return false;
@@ -139,24 +144,37 @@ fn tokenize_number(src: &str) -> io::Result<(TokenType, usize)> {
     });
 
     if dot {
-        let value: f64 = decimal.parse().unwrap();
-        Ok((TokenType::Decimal(value), bytes))
+        match number.parse::<f64>() {
+            Ok(value) => Ok((TokenType::FloatingPoint(value), bytes)),
+            Err(err) => Err(CompilerError::UnexpectedTokenError(format!(
+                "Expected a valid C decimal value, instead got: {}",
+                number
+            ))),
+        }
     } else {
-        let value: usize = decimal.parse().unwrap();
-        Ok((TokenType::Integer(value), bytes))
+        match number.parse::<i64>() {
+            Ok(value) => Ok((TokenType::Integer(value), bytes)),
+            Err(err) => Err(CompilerError::UnexpectedTokenError(format!(
+                "Expected a valid C integer value, instead got: {}",
+                number
+            ))),
+        }
     }
 }
 
-fn tokenize_char(src: &str) -> Result<(TokenType, usize), Error> {
+fn tokenize_char(src: &str) -> Result<(TokenType, usize), CompilerError> {
     let (ch, bytes) = iter_while(&src[1..], |ch| ch != '\'');
 
     match ch.len() {
         1 => Ok((TokenType::Character(ch.chars().next().unwrap()), bytes + 2)),
-        _ => Err(Error::from(ErrorKind::InvalidData)),
+        _ => Err(CompilerError::UnexpectedTokenError(format!(
+            "A single quoted literal can only have 1 character and not: {}",
+            ch
+        ))),
     }
 }
 
-fn tokenize_string(src: &str) -> Result<(TokenType, usize), Error> {
+fn tokenize_string(src: &str) -> Result<(TokenType, usize), CompilerError> {
     let (stringliteral, bytes) = iter_while(&src[1..], |ch| ch != '"');
 
     match src.chars().nth(bytes + 1) {
@@ -164,14 +182,19 @@ fn tokenize_string(src: &str) -> Result<(TokenType, usize), Error> {
             TokenType::StringLiteral(stringliteral.to_string()),
             bytes + 2,
         )),
-        _ => Err(Error::from(ErrorKind::UnexpectedEof)),
+        _ => Err(CompilerError::UnexpectedTokenError(
+            "Missing \" in a quoted string literal".to_string(),
+        )),
     }
 }
 
-fn tokenize_identifier(src: &str) -> Result<(TokenType, usize), Error> {
+// This function never returns any error, should the return type be changed?
+// Or kept as it is to be consistent with other functions?
+fn tokenize_identifier(src: &str) -> Result<(TokenType, usize), CompilerError> {
     let (identifier, bytes) = iter_while(src, |ch| ch.is_alphanumeric() || ch == '_');
 
     let tokentype = match identifier {
+        // Check if the so called `identifier` is actually a keyword
         "auto" => TokenType::Keyword(Keyword::Auto),
         "break" => TokenType::Keyword(Keyword::Break),
         "case" => TokenType::Keyword(Keyword::Case),
@@ -188,6 +211,7 @@ fn tokenize_identifier(src: &str) -> Result<(TokenType, usize), Error> {
         "for" => TokenType::Keyword(Keyword::For),
         "goto" => TokenType::Keyword(Keyword::Goto),
         "if" => TokenType::Keyword(Keyword::If),
+        "inline" => TokenType::Keyword(Keyword::Inline),
         "int" => TokenType::Keyword(Keyword::Int),
         "long" => TokenType::Keyword(Keyword::Long),
         "register" => TokenType::Keyword(Keyword::Register),
@@ -205,15 +229,16 @@ fn tokenize_identifier(src: &str) -> Result<(TokenType, usize), Error> {
         "volatile" => TokenType::Keyword(Keyword::Volatile),
         "while" => TokenType::Keyword(Keyword::While),
 
+        // Else it is really an identifier
         _ => TokenType::Identifier(identifier.to_string()),
     };
     Ok((tokentype, bytes))
 }
 
-fn tokenize(src: &str) -> Result<(TokenType, usize), Error> {
+fn tokenize(src: &str) -> Result<(TokenType, usize), CompilerError> {
     let next = match src.chars().next() {
         Some(c) => c,
-        None => panic!("Unexpected EOF!"),
+        None => panic!("Internal Error: Failed to get the next character from the src buffer, presumably it's empty!"),
     };
 
     // Required to check multicharacter operators like ++, --, +=, -=, &&, ||
@@ -313,15 +338,20 @@ fn tokenize(src: &str) -> Result<(TokenType, usize), Error> {
         next @ '_' | next if next.is_alphabetic() => Ok(tokenize_identifier(src)?),
 
         // Handle unsupported characters
-        _ => Err(Error::from(ErrorKind::Unsupported)),
+        _ => Err(CompilerError::UnexpectedTokenError(format!(
+            "Unexpected token: {}",
+            next
+        ))),
     }
 }
 
 pub struct Tokenizer<'a> {
-    cidx: usize,        // Current index
-    srcbuffer: &'a str, // Remaining source buffer
-    linerow: usize,     // Current line character row
-    linecol: usize,     // Current line character column
+    cidx: usize,            // Current index
+    srcbuffer: &'a str,     // Remaining source buffer
+    peekedtoken: TokenType, // Store the peeked token, to be reused by self.next_token()
+    peekedbytes: usize,     // The number of bytes that were peeked
+    linerow: usize,         // Current line character row
+    linecol: usize,         // Current line character column
 }
 
 impl<'a> Tokenizer<'a> {
@@ -329,35 +359,74 @@ impl<'a> Tokenizer<'a> {
         Tokenizer {
             cidx: 0,
             srcbuffer: src,
+            peekedtoken: TokenType::None,
+            peekedbytes: 0,
             linerow: 0,
             linecol: 0,
         }
     }
 
-    pub fn next_token(&mut self) -> Result<Option<TokenType>, Error> {
+    // TODO: Handle the case where if multiple times the same token is peeked...
+    // Return the stored token instead of retokenizing it
+    pub fn peek_token(&mut self) -> Result<Option<TokenType>, CompilerError> {
+        let (_, whitespace_bytes) = iter_while(self.srcbuffer, |ch| ch.is_whitespace());
+
+        if self.srcbuffer.is_empty() {
+            Ok(None)
+        } else {
+            let (token, bytes) = tokenize(&self.srcbuffer[whitespace_bytes..])?;
+
+            // Store the peeked token info
+            self.peekedtoken = token.clone();
+            self.peekedbytes = whitespace_bytes + bytes;
+
+            // Return the newly parsed token instead of parsing the srcbuffer again
+            Ok(Some(token))
+        }
+    }
+
+    // This function parses the next token and consumes it
+    // It moves forward the source pointers to the start of the next token
+    pub fn next_token(&mut self) -> Result<Option<TokenType>, CompilerError> {
+        // Check if the next token is already peeked/processed
+        if self.peekedbytes != 0 {
+            // If Yes then move the srcbuffer forward and return the stored token
+            self.srcbuffer = &self.srcbuffer[self.peekedbytes..];
+            self.cidx += self.peekedbytes;
+
+            // This is a temporary variable
+            let peekedtoken = self.peekedtoken.clone(); // Is this optimal?
+
+            // Reset the peeked token info
+            self.peekedtoken = TokenType::None;
+            self.peekedbytes = 0;
+
+            // Return the already stored token instead of parsing the srcbuffer again
+            return Ok(Some(peekedtoken));
+        };
+
+        // Read the next token and return it
         self.skip_whitespace();
 
         if self.srcbuffer.is_empty() {
             Ok(None)
         } else {
-            match tokenize(self.srcbuffer) {
-                Ok((token, bytes)) => {
-                    self.srcbuffer = &self.srcbuffer[bytes..];
-                    self.cidx += bytes;
+            let (token, bytes) = tokenize(self.srcbuffer)?;
+            self.srcbuffer = &self.srcbuffer[bytes..];
+            self.cidx += bytes;
 
-                    // Just update the line column
-                    // As the intended behaviour of `tokenize` function is to not include newline in any of the tokens
-                    self.linecol += bytes;
+            // Just update the line column
+            // As the intended behaviour of `tokenize` function is to not include newline in any of the tokens
+            self.linecol += bytes;
 
-                    Ok(Some(token))
-                }
-                Err(error) => {
-                    panic!(
-                        "Error tokenizing at line:{}:{}: {:?}",
-                        self.linerow, self.linecol, error
-                    );
-                }
-            }
+            Ok(Some(token))
+
+            // Err(error) => {
+            //     panic!(
+            //         "Error tokenizing at line:{}:{}: {:?}",
+            //         self.linerow, self.linecol, error
+            //     );
+            // }
         }
     }
 
