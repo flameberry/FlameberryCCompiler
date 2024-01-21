@@ -19,24 +19,30 @@ impl Span {
 
 // For a Span { start: 10, end: 16 } the debug string will be <10...16>
 impl fmt::Debug for Span {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "<{}..{}>", self.start, self.end)
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<{}..{}>", self.start, self.end)
     }
 }
 
 // Implementation of a basic node in the Abstract Syntax Tree
 #[derive(Debug, Clone)]
 pub struct Node<T> {
-    node: T,
-    span: Span,
+    pub node: T,
+    pub span: Span,
 }
 
 impl<T> Node<T> {
     /// Create new node
     pub fn new(node: T, span: Span) -> Node<T> {
-        Node {
-            node: node,
-            span: span,
-        }
+        Node { node, span }
+    }
+}
+
+impl<T> fmt::Display for Node<T>
+where
+    T: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {:?}", self.node, self.span)
     }
 }

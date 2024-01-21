@@ -11,7 +11,5 @@ path = "CCompiler/src/main.rs"
 name = "flameberrycc"
 path = "CCompiler/src/lib.rs"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-regex = "1.10.2"
+debug_tree = "0.4.0"

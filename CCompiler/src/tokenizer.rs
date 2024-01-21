@@ -1,9 +1,5 @@
 //! Module for performing lexical analysis on source code.
-
-use regex::bytes;
-
 use crate::errors::CompilerError;
-use std::io::{self, Error, ErrorKind};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Keyword {

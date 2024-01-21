@@ -1,5 +1,7 @@
 //! Module for parsing the tokenized code into an AST tree according to the C17 standard.
 
+use core::fmt;
+use debug_tree::*;
 use std::io::{Error, ErrorKind};
 
 use crate::errors::CompilerError;
@@ -113,12 +115,6 @@ struct Declaration {
 }
 
 #[derive(Debug)]
-enum ExternalDeclaration {
-    FunctionDefinition(FunctionDefinition),
-    Declaration(Declaration),
-}
-
-#[derive(Debug)]
 enum BlockItem {
     Declaration(Node<Declaration>),
     Statement(Node<Statement>),
@@ -128,6 +124,12 @@ enum BlockItem {
 enum Statement {
     ReturnStatement(Node<Expression>),
     Compound(Vec<Node<BlockItem>>),
+}
+
+#[derive(Debug)]
+enum ExternalDeclaration {
+    FunctionDefinition(FunctionDefinition),
+    Declaration(Declaration),
 }
 
 // Grammar for Translation Unit according to C17 ISO standard
@@ -142,6 +144,56 @@ enum Statement {
 #[derive(Debug)]
 pub struct TranslationUnit {
     external_declarations: Vec<Node<ExternalDeclaration>>,
+}
+
+impl fmt::Display for DeclarationSpecifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DeclarationSpecifier::TypeQualifier(typequalifier) => {
+                write!(f, "TypeQualifier -> {:?}", typequalifier)
+            }
+            DeclarationSpecifier::TypeSpecifier(typespec) => {
+                write!(f, "TypeSpecifier -> {:?}", typespec)
+            }
+            DeclarationSpecifier::FunctionSpecifier(funcspec) => {
+                write!(f, "FunctionSpecifier -> {:?}", funcspec)
+            }
+            DeclarationSpecifier::StorageClassSpecifier(storagespec) => {
+                write!(f, "StorageClassSpecifier -> {:?}", storagespec)
+            }
+        }
+    }
+}
+
+pub fn display_translationunit(tunit: &TranslationUnit) {
+    defer_print!();
+    add_branch!("TranslationUnit");
+    for extdecl in &tunit.external_declarations {
+        match &extdecl.node {
+            ExternalDeclaration::Declaration(decl) => {
+                add_branch!("Declaration {:?}", extdecl.span);
+                // Add declaration
+                add_branch!("DeclarationSpecifiers");
+                for declspec in &decl.specifiers {
+                    add_leaf!("{}", declspec);
+                }
+                // Add declarator
+                match &decl.declarator.node {
+                    Declarator::FunctionDeclarator(funcdecl) => {
+                        add_branch!("FunctionDeclarator");
+                        add_leaf!("Identifier -> \"{}\"", funcdecl.identifier);
+                        // TODO: Add Parameters
+                    }
+                    Declarator::DirectDeclarator(identifier) => {
+                        add_leaf!("DirectDeclarator -> \"{}\"", identifier);
+                    }
+                }
+            }
+            ExternalDeclaration::FunctionDefinition(funcdef) => {
+                add_branch!("FunctionDefinition {:?}", extdecl.span);
+            }
+        }
+    }
 }
 
 pub struct Parser<'a> {

@@ -1,4 +1,4 @@
-use flameberrycc::parser::Parser;
+use flameberrycc::parser::{display_translationunit, Parser};
 use flameberrycc::tokenizer::Tokenizer;
 use std::{fs, time::Instant};
 
@@ -22,7 +22,7 @@ fn compile(src: &str) {
 
     let mut parser = Parser::new(&mut tokenizer);
     match parser.parse() {
-        Ok(translation_unit) => print!("Translation Unit: {:?}", translation_unit),
+        Ok(translation_unit) => display_translationunit(&translation_unit),
         Err(err) => panic!("Parser failed with error: {}", err),
     }
 }
