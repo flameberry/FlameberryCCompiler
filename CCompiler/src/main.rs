@@ -23,6 +23,7 @@ fn compile(src: &str) {
     let mut parser = Parser::new(&mut tokenizer);
     match parser.parse() {
         Ok(translation_unit) => display_translationunit(&translation_unit),
+        // Ok(translation_unit) => println!("{:?}", translation_unit),
         Err(err) => panic!("Parser failed with error: {}", err),
     }
 }

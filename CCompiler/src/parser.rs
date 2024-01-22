@@ -81,9 +81,9 @@ enum Declarator {
 
 #[derive(Debug)]
 struct FunctionParameter {
-    // This struct has the same signature as that of the `Declaration` struct. Should they be merged under one name?
+    // This key difference between this struct and `Declaration` struct is that the `declarator` is Optional here
     specifiers: Vec<Node<DeclarationSpecifier>>,
-    declarator: Node<Declarator>,
+    declarator: Option<Node<Declarator>>, // Th
 }
 
 #[derive(Debug)]
@@ -132,15 +132,17 @@ enum ExternalDeclaration {
     Declaration(Declaration),
 }
 
-// Grammar for Translation Unit according to C17 ISO standard
-//      translation-unit:
-//           external-declaration
-//           translation-unit external-declaration
-//
-//      external-declaration:
-//           function-definition
-//           declaration
-// This is the topmost Node in the hierarchy of AST as it represents the entire file
+/// Grammar for Translation Unit according to C17 ISO standard:
+///
+///      translation-unit:
+///           external-declaration
+///           translation-unit external-declaration
+///
+///      external-declaration:
+///           function-definition
+///           declaration
+///
+/// This is the topmost Node in the hierarchy of AST as it represents the entire file
 #[derive(Debug)]
 pub struct TranslationUnit {
     external_declarations: Vec<Node<ExternalDeclaration>>,
@@ -173,16 +175,45 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
             ExternalDeclaration::Declaration(decl) => {
                 add_branch!("Declaration {:?}", extdecl.span);
                 // Add declaration
-                add_branch!("DeclarationSpecifiers");
-                for declspec in &decl.specifiers {
-                    add_leaf!("{}", declspec);
+                {
+                    // Wrapped around brackets to ensure the tree indentation
+                    add_branch!("DeclarationSpecifiers");
+                    for declspec in &decl.specifiers {
+                        add_leaf!("{}", declspec);
+                    }
                 }
                 // Add declarator
                 match &decl.declarator.node {
                     Declarator::FunctionDeclarator(funcdecl) => {
                         add_branch!("FunctionDeclarator");
                         add_leaf!("Identifier -> \"{}\"", funcdecl.identifier);
-                        // TODO: Add Parameters
+
+                        // Add Parameters
+                        add_branch!("FunctionParameters");
+                        for param in &funcdecl.parameters {
+                            // Add FunctionParameter
+                            add_branch!("FunctionParameter {:?}", param.span);
+                            {
+                                // Wrapped around brackets to ensure the tree indentation
+                                add_branch!("DeclarationSpecifiers");
+                                for declspec in &param.node.specifiers {
+                                    add_leaf!("{}", declspec);
+                                }
+                            }
+
+                            // Add Parameter Declarator
+                            match &param.node.declarator {
+                                Some(paramdecl) => match &paramdecl.node {
+                                    Declarator::DirectDeclarator(paramidentifier) => {
+                                        add_leaf!("DirectDeclarator -> \"{}\"", paramidentifier)
+                                    }
+                                    _ => panic!(
+                                        "Parameter Declarator should not be Function Declarator!"
+                                    ),
+                                },
+                                None => add_leaf!("DirectDeclarator -> None"),
+                            }
+                        }
                     }
                     Declarator::DirectDeclarator(identifier) => {
                         add_leaf!("DirectDeclarator -> \"{}\"", identifier);
@@ -194,6 +225,49 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
             }
         }
     }
+}
+
+/// Maps TokenType::Keyword -> DeclarationSpecifier
+fn keyword2declspec(keyword: Keyword) -> Option<DeclarationSpecifier> {
+    let declspec = match keyword {
+        // Storage Classifiers
+        Keyword::Auto => DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Auto),
+        Keyword::Register => {
+            DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Register)
+        }
+        Keyword::Extern => {
+            DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Extern)
+        }
+        Keyword::Static => {
+            DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Static)
+        }
+        Keyword::Typedef => {
+            DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Typedef)
+        }
+
+        // Type Qualifiers
+        Keyword::Const => DeclarationSpecifier::TypeQualifier(TypeQualifier::Const),
+        Keyword::Volatile => DeclarationSpecifier::TypeQualifier(TypeQualifier::Volatile),
+
+        // Type Specifiers
+        Keyword::Void => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Void),
+        Keyword::Char => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Char),
+        Keyword::Short => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Short),
+        Keyword::Int => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Int),
+        Keyword::Long => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Long),
+        Keyword::Float => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Float),
+        Keyword::Double => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Double),
+        Keyword::Signed => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Signed),
+        Keyword::Unsigned => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Unsigned),
+
+        // Function Specifiers
+        Keyword::Inline => DeclarationSpecifier::FunctionSpecifier(FunctionSpecifier::Inline),
+
+        // Unknown keyword present in declaration specifier
+        _ => return None,
+    };
+    // Return the declaration specifier type
+    Some(declspec)
 }
 
 pub struct Parser<'a> {
@@ -212,7 +286,7 @@ impl<'a> Parser<'a> {
 
         loop {
             match self.tokenizer.peek_token()? {
-                Some(token) => {
+                Some(_) => {
                     // An External Declaration can have:
                     //      1. Function Definition
                     //      2. Declaration
@@ -221,7 +295,7 @@ impl<'a> Parser<'a> {
                     let declaration = self.parse_declaration()?;
 
                     // Expect a semicolon (Function Definitions will be handled later)
-                    self.accept_semicolon();
+                    self.accept_token(TokenType::Semicolon)?;
 
                     tranlation_unit.external_declarations.push(Node::new(
                         ExternalDeclaration::Declaration(declaration),
@@ -298,107 +372,22 @@ impl<'a> Parser<'a> {
 
         let mut specifiers: Vec<Node<DeclarationSpecifier>> = Vec::new();
 
-        while let Ok(Some(token)) = self.tokenizer.peek_token() {
+        while let Some(token) = self.tokenizer.peek_token()? {
             match token {
-                TokenType::Keyword(keyword) => {
-                    match keyword {
-                        // Storage Classifiers
-                        Keyword::Auto => specifiers.push(Node::new(
-                            DeclarationSpecifier::StorageClassSpecifier(
-                                StorageClassSpecifier::Auto,
-                            ),
-                            Span::none(),
-                        )),
-                        Keyword::Register => specifiers.push(Node::new(
-                            DeclarationSpecifier::StorageClassSpecifier(
-                                StorageClassSpecifier::Register,
-                            ),
-                            Span::none(),
-                        )),
-                        Keyword::Extern => specifiers.push(Node::new(
-                            DeclarationSpecifier::StorageClassSpecifier(
-                                StorageClassSpecifier::Extern,
-                            ),
-                            Span::none(),
-                        )),
-                        Keyword::Static => specifiers.push(Node::new(
-                            DeclarationSpecifier::StorageClassSpecifier(
-                                StorageClassSpecifier::Static,
-                            ),
-                            Span::none(),
-                        )),
-                        Keyword::Typedef => specifiers.push(Node::new(
-                            DeclarationSpecifier::StorageClassSpecifier(
-                                StorageClassSpecifier::Typedef,
-                            ),
-                            Span::none(),
-                        )),
-
-                        // Type Qualifiers
-                        Keyword::Const => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeQualifier(TypeQualifier::Const),
-                            Span::none(),
-                        )),
-                        Keyword::Volatile => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeQualifier(TypeQualifier::Volatile),
-                            Span::none(),
-                        )),
-
-                        // Type Specifiers
-                        Keyword::Void => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Void),
-                            Span::none(),
-                        )),
-                        Keyword::Char => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Char),
-                            Span::none(),
-                        )),
-                        Keyword::Short => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Short),
-                            Span::none(),
-                        )),
-                        Keyword::Int => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Int),
-                            Span::none(),
-                        )),
-                        Keyword::Long => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Long),
-                            Span::none(),
-                        )),
-                        Keyword::Float => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Float),
-                            Span::none(),
-                        )),
-                        Keyword::Double => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Double),
-                            Span::none(),
-                        )),
-                        Keyword::Signed => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Signed),
-                            Span::none(),
-                        )),
-                        Keyword::Unsigned => specifiers.push(Node::new(
-                            DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Unsigned),
-                            Span::none(),
-                        )),
-
-                        // Function Specifiers
-                        Keyword::Inline => specifiers.push(Node::new(
-                            DeclarationSpecifier::FunctionSpecifier(FunctionSpecifier::Inline),
-                            Span::none(),
-                        )),
-
-                        // Unknown keyword present in declaration specifier
-                        _ => {
-                            return Err(CompilerError::SyntaxError(format!(
-                                "Unexpected keyword: {:?}",
-                                keyword
-                            )))
-                        }
+                // keyword.clone() is used to avoid borrowing issues while returning an error containing `keyword` information
+                TokenType::Keyword(keyword) => match keyword2declspec(keyword.clone()) {
+                    Some(declspec) => {
+                        specifiers.push(Node::new(declspec, Span::none()));
+                        // Consume the peeked token as it is a Declaration Specifier
+                        self.tokenizer.next_token()?;
                     }
-                    // Consume the peeked token as it is a Declaration Specifier
-                    self.tokenizer.next_token()?;
-                }
+                    None => {
+                        return Err(CompilerError::SyntaxError(format!(
+                            "Unexpected keyword: {:?}",
+                            keyword
+                        )))
+                    }
+                },
 
                 TokenType::Identifier(identifier) => {
                     // Once we hit an identifier (we should always hit one, if the program is syntactically right)
@@ -437,24 +426,6 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn parse_parameters(&mut self) -> Result<Vec<Node<FunctionParameter>>, CompilerError> {
-        debug_assert!(self.tokenizer.next_token()?.unwrap() == TokenType::OpenParenthesis);
-
-        match self.tokenizer.next_token()? {
-            Some(token) => match token {
-                // Parse parameter list
-                // Currently only function with no parameters are supported
-                TokenType::CloseParenthesis => Ok(Vec::new()),
-                _ => Err(CompilerError::UnexpectedTokenError(
-                    "Only functions with no parameters are supported".to_string(),
-                )),
-            },
-            None => Err(CompilerError::UnexpectedTokenError(
-                "Missing `)` in the function declaration/definition".to_string(),
-            )),
-        }
-    }
-
     fn parse_declarator(&mut self) -> Result<Node<Declarator>, CompilerError> {
         match self.tokenizer.next_token()? {
             Some(token) => match token {
@@ -462,8 +433,10 @@ impl<'a> Parser<'a> {
                     // Decide whether it's a function declarator or a direct declarator
                     match self.tokenizer.peek_token()? {
                         Some(TokenType::OpenParenthesis) => {
-                            // Parse the parameters
+                            self.tokenizer.next_token()?; // Consume the OpenParenthesis
                             let parameters = self.parse_parameters()?; // TODO: Does this copy the entire vector? If yes find a way to avoid that
+                            self.accept_token(TokenType::CloseParenthesis)?; // Consume the CloseParenthesis
+
                             // Create the function declarator
                             let fdeclarator = FunctionDeclarator {
                                 identifier,
@@ -475,7 +448,7 @@ impl<'a> Parser<'a> {
                                 Span::none(),
                             ))
                         }
-                        Some(TokenType::Semicolon) => Ok(Node::new(
+                        Some(TokenType::Semicolon | TokenType::Comma) => Ok(Node::new(
                             Declarator::DirectDeclarator(identifier),
                             Span::none(),
                         )),
@@ -486,6 +459,140 @@ impl<'a> Parser<'a> {
             },
             None => panic!("Internal Error: Expected Identifier, but found no token!"),
         }
+    }
+
+    fn parse_parameters(&mut self) -> Result<Vec<Node<FunctionParameter>>, CompilerError> {
+        match self.tokenizer.peek_token()? {
+            Some(token) => match token {
+                // If we reach this line of code, then the function declarator contains no parameters
+                // void function()
+                //              ^^ Empty parameter list
+                TokenType::CloseParenthesis => Ok(Vec::new()),
+
+                // Parse the parameter list
+                _ => {
+                    let mut parameters = Vec::new();
+
+                    let mut expect_parameter = false;
+
+                    while self.tokenizer.peek_token()? != Some(TokenType::CloseParenthesis) {
+                        let parameterdecl = self.parse_parameter_decl()?;
+                        parameters.push(parameterdecl);
+
+                        // Handle accepting a comma here
+                        // No need to handle the case where next token is not , or )
+                        // As the parse_parameter_decl() exits only when it encounters one of the above two tokens
+                        // In case of next token being None, This function will return the parameters but the calling function will expect a )
+                        // And then propagate an error, as it's not this function's responsibility to parse ) which is a part of the Declarator and not the Parameter List
+                        if self.tokenizer.peek_token()? == Some(TokenType::Comma) {
+                            self.tokenizer.next_token()?;
+                            expect_parameter = true;
+                        } else {
+                            expect_parameter = false;
+                        }
+                    }
+
+                    // This is to handle a case where the below C code should not be considered valid
+                    // void function(const float param1, )
+                    //                                  ^^ Missing parameter
+                    // I.e. when a comma is consumed, but the next token is ) then the while loop will exit and return parameters successfully
+                    // But that is not valid C syntax, a comma cannot be present if no parameter is present after it
+                    if expect_parameter {
+                        return Err(CompilerError::SyntaxError(
+                            "Expected type specifier for parameter declaration after `,` instead got `)`".to_string(),
+                        ));
+                    }
+                    // Return the parameters
+                    Ok(parameters)
+                }
+            },
+            // This line will be reached when the file ends abruptly with a half function declaration
+            // void function(
+            //              ^^ End of file
+            None => Err(CompilerError::UnexpectedTokenError(
+                "Missing `)` in the function declaration/definition".to_string(),
+            )),
+        }
+    }
+
+    fn parse_parameter_decl(&mut self) -> Result<Node<FunctionParameter>, CompilerError> {
+        let mut specifiers: Vec<Node<DeclarationSpecifier>> = Vec::new();
+        while let Some(token) = self.tokenizer.peek_token()? {
+            match token {
+                // keyword.clone() is used to avoid borrowing issues while returning an error containing `keyword` information
+                TokenType::Keyword(keyword) => match keyword2declspec(keyword.clone()) {
+                    Some(declspec) => {
+                        // Push back the declaration specifiers
+                        specifiers.push(Node::new(declspec, Span::none()));
+
+                        // Consume the peeked token as it is a Declaration Specifier
+                        self.tokenizer.next_token()?;
+                    }
+                    None => {
+                        return Err(CompilerError::SyntaxError(format!(
+                            "Unexpected keyword: {:?}",
+                            keyword
+                        )))
+                    }
+                },
+                TokenType::Identifier(identifier) => {
+                    // Once we hit an identifier
+                    // Parse the expected direct declarator (Function pointers will be handled in the future)
+                    if specifiers.len() != 0 {
+                        // Currently we only support DirectDeclarators in parameter declaration
+                        let declarator =
+                            Node::new(Declarator::DirectDeclarator(identifier), Span::none());
+                        // Create the FunctionParameter with the Identifier as we hit an Identifier
+                        let parameter = FunctionParameter {
+                            specifiers,
+                            declarator: Some(declarator),
+                        };
+
+                        // Consume the identifier token as it is a part of the parameter declaration
+                        self.tokenizer.next_token()?;
+
+                        // Return the function parameter node
+                        return Ok(Node::new(parameter, Span::none()));
+                    } else {
+                        // This should happen when the program contains something like
+                        // function(param1, const float param2)
+                        //          ^^ Missing Declaration Specifiers (like int, void, etc.)
+                        return Err(CompilerError::SyntaxError(format!(
+                            "Unexpected Identifer: `{}`, Expected a Declaration Specifier",
+                            identifier
+                        )));
+                    }
+                }
+                TokenType::Comma | TokenType::CloseParenthesis => {
+                    // This line will be reached when no identifier has been reached yet
+                    // But the next token seems to be either a , or ) which is the end of the parameter declaration
+                    if specifiers.len() != 0 {
+                        // Instead of reaching TokenType::Identifier we have reached a parameter end
+                        // Hence make a FunctionParameter with no declarator
+                        // This is the key difference between a normal declaration and a function parameter declaration
+                        let parameter = FunctionParameter {
+                            specifiers,
+                            declarator: None,
+                        };
+                        return Ok(Node::new(parameter, Span::none()));
+                    } else {
+                        // This line is reached when the C code should look something like:
+                        // void function(, const float param2)
+                        //               ^^ Missing parameter declaration
+                        return Err(CompilerError::SyntaxError(
+                            "Expected a type specifier for parameter declaration, instead found: `,` or `)`"
+                                .to_string(),
+                        ));
+                    }
+                }
+                _ => break,
+            }
+        }
+        // This line will be reached when neither a keyword, identifier, nor a , or ) are encountered
+        // Or there are suddenly no tokens to parse
+        Err(CompilerError::SyntaxError(
+            "Unexpected end of file".to_string(),
+        ))
     }
 
     fn parse_expr(&mut self) -> Result<Node<Expression>, Error> {
@@ -501,13 +608,44 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn accept_semicolon(&mut self) {
-        match self.tokenizer.next_token() {
-            Ok(Some(token)) => match token {
-                TokenType::Semicolon => {}
-                _ => panic!("Expected semicolon!"),
-            },
-            _ => panic!("Expected semicolon!"),
+    fn accept_token_if<F>(&mut self, mut predicate: F) -> Result<(), CompilerError>
+    where
+        F: FnMut(TokenType) -> bool,
+    {
+        match self.tokenizer.next_token()? {
+            Some(token) => {
+                // Token is cloned to avoid borrowing
+                if predicate(token.clone()) {
+                    Ok(())
+                } else {
+                    Err(CompilerError::UnexpectedTokenError(format!(
+                        "Failed to accept token: {:?}, predicate failed",
+                        token
+                    )))
+                }
+            }
+            None => Err(CompilerError::UnexpectedTokenError(
+                "Expected a token".to_string(),
+            )),
+        }
+    }
+
+    fn accept_token(&mut self, tokentype: TokenType) -> Result<(), CompilerError> {
+        match self.tokenizer.next_token()? {
+            Some(token) => {
+                if token == tokentype {
+                    Ok(())
+                } else {
+                    Err(CompilerError::UnexpectedTokenError(format!(
+                        "Expected token: {:?}, instead found: {:?}",
+                        tokentype, token
+                    )))
+                }
+            }
+            None => Err(CompilerError::UnexpectedTokenError(format!(
+                "Expected token: {:?}",
+                tokentype
+            ))),
         }
     }
 }

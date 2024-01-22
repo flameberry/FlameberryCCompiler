@@ -1,4 +1,7 @@
-const int NiceFunction();
+const int NiceFunction(const int param1, float param2);
+
 short g_GlobalVariable;
-void Flameberry();
+
+unsigned int GetSum(unsigned int, unsigned int);
+
 inline float AdityaG();
