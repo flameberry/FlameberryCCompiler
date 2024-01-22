@@ -147,7 +147,7 @@ fn tokenize_number(src: &str) -> Result<(TokenType, usize), CompilerError> {
     if dot {
         match number.parse::<f64>() {
             Ok(value) => Ok((TokenType::FloatingPoint(value), bytes)),
-            Err(err) => Err(CompilerError::UnexpectedTokenError(format!(
+            Err(_) => Err(CompilerError::UnexpectedTokenError(format!(
                 "Expected a valid C decimal value, instead got: {}",
                 number
             ))),
@@ -155,7 +155,7 @@ fn tokenize_number(src: &str) -> Result<(TokenType, usize), CompilerError> {
     } else {
         match number.parse::<i64>() {
             Ok(value) => Ok((TokenType::Integer(value), bytes)),
-            Err(err) => Err(CompilerError::UnexpectedTokenError(format!(
+            Err(_) => Err(CompilerError::UnexpectedTokenError(format!(
                 "Expected a valid C integer value, instead got: {}",
                 number
             ))),
@@ -354,7 +354,6 @@ pub struct Tokenizer<'a> {
     peekedbytes: usize, // The number of bytes that were peeked
     linerow: usize,     // Current line character row
     linecol: usize,     // Current line character column
-                        // peekedtoken: TokenType, // Store the peeked token, to be reused by self.next_token()
 }
 
 impl<'a> Tokenizer<'a> {
@@ -390,7 +389,11 @@ impl<'a> Tokenizer<'a> {
 
             // Store the peeked token info
             self.peekedbytes = whitespace_bytes + bytes;
-            self.peekedtoken = (token, self.cidx + whitespace_bytes, self.cidx + bytes);
+            self.peekedtoken = (
+                token,
+                self.cidx + whitespace_bytes,
+                self.cidx + self.peekedbytes,
+            );
 
             // Return the newly parsed token instead of parsing the srcbuffer again
             Ok(Some(self.peekedtoken.clone()))

@@ -186,7 +186,14 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
                 match &decl.declarator.node {
                     Declarator::FunctionDeclarator(funcdecl) => {
                         add_branch!("FunctionDeclarator");
-                        add_leaf!("Identifier -> \"{}\"", funcdecl.identifier);
+                        add_leaf!(
+                            "Identifier -> \"{}\" {}",
+                            funcdecl.identifier,
+                            Span::new(
+                                decl.declarator.span.start,
+                                decl.declarator.span.start + funcdecl.identifier.len()
+                            )
+                        );
 
                         // Add Parameters
                         add_branch!("FunctionParameters");
