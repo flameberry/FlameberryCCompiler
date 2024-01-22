@@ -16,7 +16,7 @@ unsigned int GetSum(unsigned int, unsigned int);
 inline float AdityaG();
 ```
 
-<img src="README/AST.png" height="800">
+<img src="README/AST.png" width="400">
 
 ## Getting Started
 
