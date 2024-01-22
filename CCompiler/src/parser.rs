@@ -173,7 +173,7 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
     for extdecl in &tunit.external_declarations {
         match &extdecl.node {
             ExternalDeclaration::Declaration(decl) => {
-                add_branch!("Declaration {:?}", extdecl.span);
+                add_branch!("Declaration {}", extdecl.span);
                 // Add declaration
                 {
                     // Wrapped around brackets to ensure the tree indentation
@@ -192,7 +192,7 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
                         add_branch!("FunctionParameters");
                         for param in &funcdecl.parameters {
                             // Add FunctionParameter
-                            add_branch!("FunctionParameter {:?}", param.span);
+                            add_branch!("FunctionParameter {}", param.span);
                             {
                                 // Wrapped around brackets to ensure the tree indentation
                                 add_branch!("DeclarationSpecifiers");
@@ -205,7 +205,11 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
                             match &param.node.declarator {
                                 Some(paramdecl) => match &paramdecl.node {
                                     Declarator::DirectDeclarator(paramidentifier) => {
-                                        add_leaf!("DirectDeclarator -> \"{}\"", paramidentifier)
+                                        add_leaf!(
+                                            "DirectDeclarator -> \"{}\" {}",
+                                            paramidentifier,
+                                            paramdecl.span
+                                        )
                                     }
                                     _ => panic!(
                                         "Parameter Declarator should not be Function Declarator!"
@@ -216,12 +220,16 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
                         }
                     }
                     Declarator::DirectDeclarator(identifier) => {
-                        add_leaf!("DirectDeclarator -> \"{}\"", identifier);
+                        add_leaf!(
+                            "DirectDeclarator -> \"{}\" {}",
+                            identifier,
+                            decl.declarator.span
+                        );
                     }
                 }
             }
             ExternalDeclaration::FunctionDefinition(funcdef) => {
-                add_branch!("FunctionDefinition {:?}", extdecl.span);
+                add_branch!("FunctionDefinition {}", extdecl.span);
             }
         }
     }
@@ -279,6 +287,7 @@ impl<'a> Parser<'a> {
         Parser { tokenizer }
     }
 
+    /// The main parse function that uses the tokenizer to generate an Abstract Syntax Tree
     pub fn parse(&mut self) -> Result<TranslationUnit, CompilerError> {
         let mut tranlation_unit = TranslationUnit {
             external_declarations: Vec::new(),
@@ -287,19 +296,19 @@ impl<'a> Parser<'a> {
         loop {
             match self.tokenizer.peek_token()? {
                 Some(_) => {
-                    // An External Declaration can have:
-                    //      1. Function Definition
-                    //      2. Declaration
-
                     // 1. Parse a Declaration
                     let declaration = self.parse_declaration()?;
 
                     // Expect a semicolon (Function Definitions will be handled later)
                     self.accept_token(TokenType::Semicolon)?;
 
+                    // Calculate the span for the declaration
+                    let declspan_start = declaration.specifiers[0].span.start; // Here we assume that a declaration will always have atleast one specifier
+                    let declspan = Span::new(declspan_start, declaration.declarator.span.end);
+
                     tranlation_unit.external_declarations.push(Node::new(
                         ExternalDeclaration::Declaration(declaration),
-                        Span::none(),
+                        declspan,
                     ));
 
                     // 2. Check for Function Definition
@@ -352,32 +361,16 @@ impl<'a> Parser<'a> {
         Ok(tranlation_unit)
     }
 
+    /// Parses a C declaration
     fn parse_declaration(&mut self) -> Result<Declaration, CompilerError> {
-        // Grammar:
-        //      declaration:
-        //           declaration-specifiers init-declarator-listopt ;
-        //           static_assert-declaration
-        //      declaration-specifiers:
-        //           storage-class-specifier declaration-specifiersopt
-        //           type-specifier declaration-specifiersopt
-        //           type-qualifier declaration-specifiersopt
-        //           function-specifier declaration-specifiersopt
-        //           alignment-specifier declaration-specifiersopt
-        //      init-declarator-list:
-        //           init-declarator
-        //           init-declarator-list , init-declarator
-        //      init-declarator:
-        //           declarator
-        //           declarator = initializer
-
         let mut specifiers: Vec<Node<DeclarationSpecifier>> = Vec::new();
 
-        while let Some(token) = self.tokenizer.peek_token()? {
+        while let Some((token, start, end)) = self.tokenizer.peek_token()? {
             match token {
                 // keyword.clone() is used to avoid borrowing issues while returning an error containing `keyword` information
                 TokenType::Keyword(keyword) => match keyword2declspec(keyword.clone()) {
                     Some(declspec) => {
-                        specifiers.push(Node::new(declspec, Span::none()));
+                        specifiers.push(Node::new(declspec, Span::new(start, end)));
                         // Consume the peeked token as it is a Declaration Specifier
                         self.tokenizer.next_token()?;
                     }
@@ -428,11 +421,11 @@ impl<'a> Parser<'a> {
 
     fn parse_declarator(&mut self) -> Result<Node<Declarator>, CompilerError> {
         match self.tokenizer.next_token()? {
-            Some(token) => match token {
+            Some((token, start, end)) => match token {
                 TokenType::Identifier(identifier) => {
                     // Decide whether it's a function declarator or a direct declarator
                     match self.tokenizer.peek_token()? {
-                        Some(TokenType::OpenParenthesis) => {
+                        Some((TokenType::OpenParenthesis, _, _)) => {
                             self.tokenizer.next_token()?; // Consume the OpenParenthesis
                             let parameters = self.parse_parameters()?; // TODO: Does this copy the entire vector? If yes find a way to avoid that
                             self.accept_token(TokenType::CloseParenthesis)?; // Consume the CloseParenthesis
@@ -442,15 +435,19 @@ impl<'a> Parser<'a> {
                                 identifier,
                                 parameters,
                             };
+
+                            // Calculate the end of span of the Function Declarator
+                            let fdeclarator_end = if let Some(param) = fdeclarator.parameters.last() { param.span.end } else { end };
+
                             // Return the final function declarator node
                             Ok(Node::new(
                                 Declarator::FunctionDeclarator(fdeclarator),
-                                Span::none(),
+                                Span::new(start, fdeclarator_end),
                             ))
-                        }
-                        Some(TokenType::Semicolon | TokenType::Comma) => Ok(Node::new(
+                        },
+                        Some((TokenType::Semicolon | TokenType::Comma, _, _)) => Ok(Node::new(
                             Declarator::DirectDeclarator(identifier),
-                            Span::none(),
+                            Span::new(start, end),
                         )),
                         _ => Err(CompilerError::UnexpectedTokenError("Unexpected token, expected a `(` (Function Declarator), or `;` (Direct Declarator)".to_string())),
                     }
@@ -463,9 +460,9 @@ impl<'a> Parser<'a> {
 
     fn parse_parameters(&mut self) -> Result<Vec<Node<FunctionParameter>>, CompilerError> {
         match self.tokenizer.peek_token()? {
-            Some(token) => match token {
+            Some((token, _, _)) => match token {
                 // If we reach this line of code, then the function declarator contains no parameters
-                // void function()
+                // void function();
                 //              ^^ Empty parameter list
                 TokenType::CloseParenthesis => Ok(Vec::new()),
 
@@ -475,7 +472,10 @@ impl<'a> Parser<'a> {
 
                     let mut expect_parameter = false;
 
-                    while self.tokenizer.peek_token()? != Some(TokenType::CloseParenthesis) {
+                    while !matches!(
+                        self.tokenizer.peek_token()?,
+                        Some((TokenType::CloseParenthesis, _, _))
+                    ) {
                         let parameterdecl = self.parse_parameter_decl()?;
                         parameters.push(parameterdecl);
 
@@ -484,11 +484,12 @@ impl<'a> Parser<'a> {
                         // As the parse_parameter_decl() exits only when it encounters one of the above two tokens
                         // In case of next token being None, This function will return the parameters but the calling function will expect a )
                         // And then propagate an error, as it's not this function's responsibility to parse ) which is a part of the Declarator and not the Parameter List
-                        if self.tokenizer.peek_token()? == Some(TokenType::Comma) {
-                            self.tokenizer.next_token()?;
-                            expect_parameter = true;
-                        } else {
-                            expect_parameter = false;
+                        match self.tokenizer.peek_token()? {
+                            Some((TokenType::Comma, _, _)) => {
+                                self.tokenizer.next_token()?;
+                                expect_parameter = true;
+                            }
+                            _ => expect_parameter = false,
                         }
                     }
 
@@ -517,13 +518,13 @@ impl<'a> Parser<'a> {
 
     fn parse_parameter_decl(&mut self) -> Result<Node<FunctionParameter>, CompilerError> {
         let mut specifiers: Vec<Node<DeclarationSpecifier>> = Vec::new();
-        while let Some(token) = self.tokenizer.peek_token()? {
+        while let Some((token, start, end)) = self.tokenizer.peek_token()? {
             match token {
                 // keyword.clone() is used to avoid borrowing issues while returning an error containing `keyword` information
                 TokenType::Keyword(keyword) => match keyword2declspec(keyword.clone()) {
                     Some(declspec) => {
                         // Push back the declaration specifiers
-                        specifiers.push(Node::new(declspec, Span::none()));
+                        specifiers.push(Node::new(declspec, Span::new(start, end)));
 
                         // Consume the peeked token as it is a Declaration Specifier
                         self.tokenizer.next_token()?;
@@ -540,8 +541,10 @@ impl<'a> Parser<'a> {
                     // Parse the expected direct declarator (Function pointers will be handled in the future)
                     if specifiers.len() != 0 {
                         // Currently we only support DirectDeclarators in parameter declaration
-                        let declarator =
-                            Node::new(Declarator::DirectDeclarator(identifier), Span::none());
+                        let declarator = Node::new(
+                            Declarator::DirectDeclarator(identifier),
+                            Span::new(start, end),
+                        );
                         // Create the FunctionParameter with the Identifier as we hit an Identifier
                         let parameter = FunctionParameter {
                             specifiers,
@@ -551,8 +554,15 @@ impl<'a> Parser<'a> {
                         // Consume the identifier token as it is a part of the parameter declaration
                         self.tokenizer.next_token()?;
 
+                        // Calculate the span start for the parameter
+                        let param_start = if let Some(specifier) = parameter.specifiers.first() {
+                            specifier.span.start
+                        } else {
+                            start
+                        };
+
                         // Return the function parameter node
-                        return Ok(Node::new(parameter, Span::none()));
+                        return Ok(Node::new(parameter, Span::new(param_start, end)));
                     } else {
                         // This should happen when the program contains something like
                         // function(param1, const float param2)
@@ -574,7 +584,11 @@ impl<'a> Parser<'a> {
                             specifiers,
                             declarator: None,
                         };
-                        return Ok(Node::new(parameter, Span::none()));
+
+                        // Calculate the span for the parameter
+                        let param_span = Span::new(parameter.specifiers[0].span.start, end);
+                        // Return the Parameter Node
+                        return Ok(Node::new(parameter, param_span));
                     } else {
                         // This line is reached when the C code should look something like:
                         // void function(, const float param2)
@@ -591,20 +605,24 @@ impl<'a> Parser<'a> {
         // This line will be reached when neither a keyword, identifier, nor a , or ) are encountered
         // Or there are suddenly no tokens to parse
         Err(CompilerError::SyntaxError(
-            "Unexpected end of file".to_string(),
+            "Expected a type specifier, or `,` or `)`".to_string(),
         ))
     }
 
-    fn parse_expr(&mut self) -> Result<Node<Expression>, Error> {
-        match self.tokenizer.next_token() {
-            Ok(Some(token)) => match token {
+    fn parse_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        match self.tokenizer.next_token()? {
+            Some((token, start, end)) => match token {
                 TokenType::Integer(integer) => Ok(Node::new(
                     Expression::Constant(Node::new(Constant::Integer(integer), Span::none())),
                     Span::none(),
                 )),
-                _ => Err(Error::from(ErrorKind::UnexpectedEof)),
+                _ => Err(CompilerError::SyntaxError(
+                    "Currently only integer constants are supported as expressions".to_string(),
+                )),
             },
-            _ => Err(Error::from(ErrorKind::UnexpectedEof)),
+            _ => Err(CompilerError::SyntaxError(
+                "Expected expression, instead found end of file".to_string(),
+            )),
         }
     }
 
@@ -613,7 +631,7 @@ impl<'a> Parser<'a> {
         F: FnMut(TokenType) -> bool,
     {
         match self.tokenizer.next_token()? {
-            Some(token) => {
+            Some((token, _, _)) => {
                 // Token is cloned to avoid borrowing
                 if predicate(token.clone()) {
                     Ok(())
@@ -632,7 +650,7 @@ impl<'a> Parser<'a> {
 
     fn accept_token(&mut self, tokentype: TokenType) -> Result<(), CompilerError> {
         match self.tokenizer.next_token()? {
-            Some(token) => {
+            Some((token, _, _)) => {
                 if token == tokentype {
                     Ok(())
                 } else {

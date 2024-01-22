@@ -95,7 +95,12 @@ pub enum TokenType {
     Comma,                     // ,
 }
 
-#[must_use = "This function is useless without the return value"]
+type Token = (TokenType, usize, usize);
+//   ^^       ^^         ^^     ^^ Token End
+//   Alias    Token      Token Start
+
+/// Iterates the src string as long as the given predicate is satisfied.
+/// Returns the sliced string which satisfied the predicate and also the number of characters in it
 fn iter_while<F>(src: &str, mut predicate: F) -> (&str, usize)
 where
     F: FnMut(char) -> bool,
@@ -341,13 +346,15 @@ fn tokenize(src: &str) -> Result<(TokenType, usize), CompilerError> {
     }
 }
 
+/// The tokenizer class
 pub struct Tokenizer<'a> {
-    cidx: usize,            // Current index
-    srcbuffer: &'a str,     // Remaining source buffer
-    peekedtoken: TokenType, // Store the peeked token, to be reused by self.next_token()
-    peekedbytes: usize,     // The number of bytes that were peeked
-    linerow: usize,         // Current line character row
-    linecol: usize,         // Current line character column
+    cidx: usize,        // Current index
+    srcbuffer: &'a str, // Remaining source buffer
+    peekedtoken: Token, // Store the peeked token, to be reused by self.next_token()
+    peekedbytes: usize, // The number of bytes that were peeked
+    linerow: usize,     // Current line character row
+    linecol: usize,     // Current line character column
+                        // peekedtoken: TokenType, // Store the peeked token, to be reused by self.next_token()
 }
 
 impl<'a> Tokenizer<'a> {
@@ -355,38 +362,47 @@ impl<'a> Tokenizer<'a> {
         Tokenizer {
             cidx: 0,
             srcbuffer: src,
-            peekedtoken: TokenType::None,
+            peekedtoken: (TokenType::None, 0, 0),
             peekedbytes: 0,
             linerow: 0,
             linecol: 0,
         }
     }
 
-    // TODO: Handle the case where if multiple times the same token is peeked...
-    // Return the stored token instead of retokenizing it
-    pub fn peek_token(&mut self) -> Result<Option<TokenType>, CompilerError> {
+    /// Returns the next token without advancing the tokenizer
+    pub fn peek_token(&mut self) -> Result<Option<Token>, CompilerError> {
+        // If multiple times the same token is peeked, then return the already peeked token
+        // Instead of tokenizing it again
+        if self.peekedbytes != 0 {
+            return Ok(Some(self.peekedtoken.clone()));
+        }
+
+        // Equivalent to self.skip_whitespace() except we don't advance the tokenizer
         let (_, whitespace_bytes) = iter_while(self.srcbuffer, |ch| ch.is_whitespace());
 
-        if self.srcbuffer.is_empty() {
+        // Emulating advancement of the srcbuffer by skipping the whitespace
+        let temp_srcbuffer = &self.srcbuffer[whitespace_bytes..];
+
+        if temp_srcbuffer.is_empty() {
             Ok(None)
         } else {
-            let (token, bytes) = tokenize(&self.srcbuffer[whitespace_bytes..])?;
+            let (token, bytes) = tokenize(&temp_srcbuffer)?;
 
             // Store the peeked token info
-            self.peekedtoken = token.clone();
             self.peekedbytes = whitespace_bytes + bytes;
+            self.peekedtoken = (token, self.cidx + whitespace_bytes, self.cidx + bytes);
 
             // Return the newly parsed token instead of parsing the srcbuffer again
-            Ok(Some(token))
+            Ok(Some(self.peekedtoken.clone()))
         }
     }
 
-    // This function parses the next token and consumes it
-    // It moves forward the source pointers to the start of the next token
-    pub fn next_token(&mut self) -> Result<Option<TokenType>, CompilerError> {
+    /// Tokenizes the next token and consumes it
+    /// It moves forward the source pointers to the start of the next token
+    pub fn next_token(&mut self) -> Result<Option<Token>, CompilerError> {
         // Check if the next token is already peeked/processed
         if self.peekedbytes != 0 {
-            // If Yes then move the srcbuffer forward and return the stored token
+            // If Yes then move the srcbuffer forward
             self.srcbuffer = &self.srcbuffer[self.peekedbytes..];
             self.cidx += self.peekedbytes;
 
@@ -394,12 +410,12 @@ impl<'a> Tokenizer<'a> {
             let peekedtoken = self.peekedtoken.clone(); // Is this optimal?
 
             // Reset the peeked token info
-            self.peekedtoken = TokenType::None;
+            self.peekedtoken = (TokenType::None, 0, 0);
             self.peekedbytes = 0;
 
             // Return the already stored token instead of parsing the srcbuffer again
             return Ok(Some(peekedtoken));
-        };
+        }
 
         // Read the next token and return it
         self.skip_whitespace();
@@ -415,14 +431,8 @@ impl<'a> Tokenizer<'a> {
             // As the intended behaviour of `tokenize` function is to not include newline in any of the tokens
             self.linecol += bytes;
 
-            Ok(Some(token))
-
-            // Err(error) => {
-            //     panic!(
-            //         "Error tokenizing at line:{}:{}: {:?}",
-            //         self.linerow, self.linecol, error
-            //     );
-            // }
+            // Return the newly parsed token with it's start and end information
+            Ok(Some((token, self.cidx - bytes, self.cidx)))
         }
     }
 

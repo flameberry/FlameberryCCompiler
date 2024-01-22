@@ -1,10 +1,22 @@
 use std::fmt;
 
+// #[derive(Debug, Copy, Clone)]
+// pub struct TokenPosition {
+//     line: usize,   // The line number in the source code
+//     column: usize, // The offset from the start of the line
+// }
+
+// impl fmt::Display for TokenPosition {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "{}:{}", self.line, self.column)
+//     }
+// }
+
 // Byte offset in the input buffer
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Span {
-    start: usize,
-    end: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl Span {
@@ -18,8 +30,9 @@ impl Span {
 }
 
 // For a Span { start: 10, end: 16 } the debug string will be <10...16>
-impl fmt::Debug for Span {
+impl fmt::Display for Span {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // TODO: Add a utility to transform this line:col format provided the source code and display it
         write!(f, "<{}..{}>", self.start, self.end)
     }
 }
@@ -43,6 +56,6 @@ where
     T: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {:?}", self.node, self.span)
+        write!(f, "{} {}", self.node, self.span)
     }
 }
