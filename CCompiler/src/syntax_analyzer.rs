@@ -2,7 +2,6 @@
 
 use core::fmt;
 use debug_tree::*;
-use std::io::{Error, ErrorKind};
 
 use crate::errors::CompilerError;
 use crate::node::{Node, Span};
@@ -167,6 +166,7 @@ impl fmt::Display for DeclarationSpecifier {
     }
 }
 
+// TODO: Make this debug mode only to save performance in release mode
 pub fn display_translationunit(tunit: &TranslationUnit) {
     defer_print!();
     add_branch!("TranslationUnit");
@@ -285,13 +285,13 @@ fn keyword2declspec(keyword: Keyword) -> Option<DeclarationSpecifier> {
     Some(declspec)
 }
 
-pub struct Parser<'a> {
+pub struct SyntaxAnalyzer<'a> {
     tokenizer: &'a mut Tokenizer<'a>,
 }
 
-impl<'a> Parser<'a> {
+impl<'a> SyntaxAnalyzer<'a> {
     pub fn new(tokenizer: &'a mut Tokenizer<'a>) -> Self {
-        Parser { tokenizer }
+        SyntaxAnalyzer { tokenizer }
     }
 
     /// The main parse function that uses the tokenizer to generate an Abstract Syntax Tree

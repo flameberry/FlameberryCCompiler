@@ -1,4 +1,4 @@
-use flameberrycc::parser::{display_translationunit, Parser};
+use flameberrycc::syntax_analyzer::{display_translationunit, SyntaxAnalyzer};
 use flameberrycc::tokenizer::Tokenizer;
 use std::{fs, time::Instant};
 
@@ -10,17 +10,7 @@ fn compile(src: &str) {
     println!("Original:\n{}", src);
     println!("Preprocessed:\n{}", preprocessed_src);
 
-    // println!("Lexed:");
-    // loop {
-    //     match tokenizer.next_token() {
-    //         Ok(Some(token)) => println!("{:?}", token),
-    //         Ok(None) => break,
-    //         Err(error) => panic!("{}", error),
-    //     }
-    // }
-    println!();
-
-    let mut parser = Parser::new(&mut tokenizer);
+    let mut parser = SyntaxAnalyzer::new(&mut tokenizer);
     match parser.parse() {
         Ok(translation_unit) => display_translationunit(&translation_unit),
         // Ok(translation_unit) => println!("{:?}", translation_unit),
