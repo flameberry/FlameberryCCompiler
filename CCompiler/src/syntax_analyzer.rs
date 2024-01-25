@@ -3,7 +3,7 @@
 use core::fmt;
 use debug_tree::*;
 
-use crate::errors::CompilerError;
+use crate::errors::{CompilerError, CompilerErrorKind};
 use crate::node::{Node, Span};
 use crate::tokenizer::{Keyword, TokenType, Tokenizer};
 
@@ -382,10 +382,11 @@ impl<'a> SyntaxAnalyzer<'a> {
                         self.tokenizer.next_token()?;
                     }
                     None => {
-                        return Err(CompilerError::SyntaxError(format!(
-                            "Unexpected keyword: {:?}",
-                            keyword
-                        )))
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: format!("Unexpected keyword: {:?}", keyword),
+                            location: Some(start),
+                        })
                     }
                 },
 
@@ -402,10 +403,14 @@ impl<'a> SyntaxAnalyzer<'a> {
                         // This should happen when the program contains something like
                         // identifier() {}
                         // ^^ Missing Declaration Specifiers (like int, void, etc.)
-                        return Err(CompilerError::SyntaxError(format!(
-                            "Unexpected Identifer: `{}`, Expected a Declaration Specifier",
-                            identifier
-                        )));
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: format!(
+                                "Unexpected Identifer: `{}`, Expected a Declaration Specifier",
+                                identifier
+                            ),
+                            location: Some(start),
+                        });
                     }
                 }
 
@@ -413,17 +418,20 @@ impl<'a> SyntaxAnalyzer<'a> {
                 // const void*  ;
                 //            ^^ Missing Identifier
                 _ => {
-                    return Err(CompilerError::UnexpectedTokenError(format!(
-                        "Unexpected Token: {:?}",
-                        token
-                    )))
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SyntaxError,
+                        message: format!("Unexpected Token: {:?}", token),
+                        location: Some(start),
+                    })
                 }
             }
         }
         // Reaching this line implies that the `TokenType::Identifier` was not encountered before all the tokens were consumed
-        Err(CompilerError::SyntaxError(
-            "Unexpected end of file".to_string(),
-        ))
+        Err(CompilerError {
+            kind: CompilerErrorKind::SyntaxError,
+            message: "Unexpected end of file".to_string(),
+            location: None,
+        })
     }
 
     fn parse_declarator(&mut self) -> Result<Node<Declarator>, CompilerError> {
@@ -456,7 +464,16 @@ impl<'a> SyntaxAnalyzer<'a> {
                             Declarator::DirectDeclarator(identifier),
                             Span::new(start, end),
                         )),
-                        _ => Err(CompilerError::UnexpectedTokenError("Unexpected token, expected a `(` (Function Declarator), or `;` (Direct Declarator)".to_string())),
+                        Some((_, start, _)) => Err(CompilerError{
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: "Unexpected token, expected a `(` (Function Declarator), or `;` (Direct Declarator)".to_string(), 
+                            location: Some(start)
+                        }),
+                        None => Err(CompilerError{
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: "Unexpected token, expected a `(` (Function Declarator), or `;` (Direct Declarator), instead encountered an End of File".to_string(), 
+                            location: None
+                        })
                     }
                 }
                 _ => panic!("Internal Error: Expected Identifier, but found no token!"),
@@ -506,9 +523,11 @@ impl<'a> SyntaxAnalyzer<'a> {
                     // I.e. when a comma is consumed, but the next token is ) then the while loop will exit and return parameters successfully
                     // But that is not valid C syntax, a comma cannot be present if no parameter is present after it
                     if expect_parameter {
-                        return Err(CompilerError::SyntaxError(
-                            "Expected type specifier for parameter declaration after `,` instead got `)`".to_string(),
-                        ));
+                        return Err(CompilerError{
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: "Expected type specifier for parameter declaration after `,` instead got `)`".to_string(),
+                            location: None
+                        });
                     }
                     // Return the parameters
                     Ok(parameters)
@@ -517,9 +536,11 @@ impl<'a> SyntaxAnalyzer<'a> {
             // This line will be reached when the file ends abruptly with a half function declaration
             // void function(
             //              ^^ End of file
-            None => Err(CompilerError::UnexpectedTokenError(
-                "Missing `)` in the function declaration/definition".to_string(),
-            )),
+            None => Err(CompilerError {
+                kind: CompilerErrorKind::SyntaxError,
+                message: "Missing `)` in the function declaration/definition".to_string(),
+                location: None,
+            }),
         }
     }
 
@@ -537,10 +558,11 @@ impl<'a> SyntaxAnalyzer<'a> {
                         self.tokenizer.next_token()?;
                     }
                     None => {
-                        return Err(CompilerError::SyntaxError(format!(
-                            "Unexpected keyword: {:?}",
-                            keyword
-                        )))
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: format!("Unexpected keyword: {:?}", keyword),
+                            location: Some(start),
+                        })
                     }
                 },
                 TokenType::Identifier(identifier) => {
@@ -574,10 +596,14 @@ impl<'a> SyntaxAnalyzer<'a> {
                         // This should happen when the program contains something like
                         // function(param1, const float param2)
                         //          ^^ Missing Declaration Specifiers (like int, void, etc.)
-                        return Err(CompilerError::SyntaxError(format!(
-                            "Unexpected Identifer: `{}`, Expected a Declaration Specifier",
-                            identifier
-                        )));
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: format!(
+                                "Unexpected Identifer: `{}`, Expected a Declaration Specifier",
+                                identifier
+                            ),
+                            location: Some(start),
+                        });
                     }
                 }
                 TokenType::Comma | TokenType::CloseParenthesis => {
@@ -600,10 +626,12 @@ impl<'a> SyntaxAnalyzer<'a> {
                         // This line is reached when the C code should look something like:
                         // void function(, const float param2)
                         //               ^^ Missing parameter declaration
-                        return Err(CompilerError::SyntaxError(
-                            "Expected a type specifier for parameter declaration, instead found: `,` or `)`"
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: "Expected a type specifier for parameter declaration, instead found: `,` or `)`"
                                 .to_string(),
-                        ));
+                                location: Some(start)
+                        });
                     }
                 }
                 _ => break,
@@ -611,9 +639,11 @@ impl<'a> SyntaxAnalyzer<'a> {
         }
         // This line will be reached when neither a keyword, identifier, nor a , or ) are encountered
         // Or there are suddenly no tokens to parse
-        Err(CompilerError::SyntaxError(
-            "Expected a type specifier, or `,` or `)`".to_string(),
-        ))
+        Err(CompilerError {
+            kind: CompilerErrorKind::SyntaxError,
+            message: "Expected a type specifier, or `,` or `)`".to_string(),
+            location: None,
+        })
     }
 
     fn parse_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
@@ -623,13 +653,18 @@ impl<'a> SyntaxAnalyzer<'a> {
                     Expression::Constant(Node::new(Constant::Integer(integer), Span::none())),
                     Span::none(),
                 )),
-                _ => Err(CompilerError::SyntaxError(
-                    "Currently only integer constants are supported as expressions".to_string(),
-                )),
+                _ => Err(CompilerError {
+                    kind: CompilerErrorKind::SyntaxError,
+                    message: "Currently only integer constants are supported as expressions"
+                        .to_string(),
+                    location: Some(start),
+                }),
             },
-            _ => Err(CompilerError::SyntaxError(
-                "Expected expression, instead found end of file".to_string(),
-            )),
+            _ => Err(CompilerError {
+                kind: CompilerErrorKind::SyntaxError,
+                message: "Expected expression, instead found end of file".to_string(),
+                location: None,
+            }),
         }
     }
 
@@ -638,39 +673,47 @@ impl<'a> SyntaxAnalyzer<'a> {
         F: FnMut(TokenType) -> bool,
     {
         match self.tokenizer.next_token()? {
-            Some((token, _, _)) => {
+            Some((token, start, _)) => {
                 // Token is cloned to avoid borrowing
                 if predicate(token.clone()) {
                     Ok(())
                 } else {
-                    Err(CompilerError::UnexpectedTokenError(format!(
-                        "Failed to accept token: {:?}, predicate failed",
-                        token
-                    )))
+                    Err(CompilerError {
+                        kind: CompilerErrorKind::SyntaxError,
+                        message: format!("Failed to accept token: {:?}, predicate failed", token),
+                        location: Some(start),
+                    })
                 }
             }
-            None => Err(CompilerError::UnexpectedTokenError(
-                "Expected a token".to_string(),
-            )),
+            None => Err(CompilerError {
+                kind: CompilerErrorKind::SyntaxError,
+                message: "Expected a token".to_string(),
+                location: None,
+            }),
         }
     }
 
     fn accept_token(&mut self, tokentype: TokenType) -> Result<(), CompilerError> {
         match self.tokenizer.next_token()? {
-            Some((token, _, _)) => {
+            Some((token, start, _)) => {
                 if token == tokentype {
                     Ok(())
                 } else {
-                    Err(CompilerError::UnexpectedTokenError(format!(
-                        "Expected token: {:?}, instead found: {:?}",
-                        tokentype, token
-                    )))
+                    Err(CompilerError {
+                        kind: CompilerErrorKind::SyntaxError,
+                        message: format!(
+                            "Expected token: {:?}, instead found: {:?}",
+                            tokentype, token
+                        ),
+                        location: Some(start),
+                    })
                 }
             }
-            None => Err(CompilerError::UnexpectedTokenError(format!(
-                "Expected token: {:?}",
-                tokentype
-            ))),
+            None => Err(CompilerError {
+                kind: CompilerErrorKind::SyntaxError,
+                message: format!("Expected token: {:?}", tokentype),
+                location: None,
+            }),
         }
     }
 }

@@ -1,5 +1,5 @@
 //! Module for performing lexical analysis on source code.
-use crate::errors::CompilerError;
+use crate::errors::{CompilerError, CompilerErrorKind};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Keyword {
@@ -147,18 +147,20 @@ fn tokenize_number(src: &str) -> Result<(TokenType, usize), CompilerError> {
     if dot {
         match number.parse::<f64>() {
             Ok(value) => Ok((TokenType::FloatingPoint(value), bytes)),
-            Err(_) => Err(CompilerError::UnexpectedTokenError(format!(
-                "Expected a valid C decimal value, instead got: {}",
-                number
-            ))),
+            Err(_) => Err(CompilerError {
+                kind: CompilerErrorKind::TokenizerError,
+                message: format!("Expected a valid C decimal value, instead got: {}", number),
+                location: None,
+            }),
         }
     } else {
         match number.parse::<i64>() {
             Ok(value) => Ok((TokenType::Integer(value), bytes)),
-            Err(_) => Err(CompilerError::UnexpectedTokenError(format!(
-                "Expected a valid C integer value, instead got: {}",
-                number
-            ))),
+            Err(_) => Err(CompilerError {
+                kind: CompilerErrorKind::TokenizerError,
+                message: format!("Expected a valid C integer value, instead got: {}", number),
+                location: None,
+            }),
         }
     }
 }
@@ -168,10 +170,14 @@ fn tokenize_char(src: &str) -> Result<(TokenType, usize), CompilerError> {
 
     match ch.len() {
         1 => Ok((TokenType::Character(ch.chars().next().unwrap()), bytes + 2)),
-        _ => Err(CompilerError::UnexpectedTokenError(format!(
-            "A single quoted literal can only have 1 character and not: {}",
-            ch
-        ))),
+        _ => Err(CompilerError {
+            kind: CompilerErrorKind::TokenizerError,
+            message: format!(
+                "A single quoted literal can only have 1 character and not: {}",
+                ch
+            ),
+            location: None,
+        }),
     }
 }
 
@@ -183,9 +189,11 @@ fn tokenize_string(src: &str) -> Result<(TokenType, usize), CompilerError> {
             TokenType::StringLiteral(stringliteral.to_string()),
             bytes + 2,
         )),
-        _ => Err(CompilerError::UnexpectedTokenError(
-            "Missing \" in a quoted string literal".to_string(),
-        )),
+        _ => Err(CompilerError {
+            kind: CompilerErrorKind::TokenizerError,
+            message: "Missing \" in a quoted string literal".to_string(),
+            location: None,
+        }),
     }
 }
 
@@ -339,10 +347,11 @@ fn tokenize(src: &str) -> Result<(TokenType, usize), CompilerError> {
         next @ '_' | next if next.is_alphabetic() => Ok(tokenize_identifier(src)?),
 
         // Handle unsupported characters
-        _ => Err(CompilerError::UnexpectedTokenError(format!(
-            "Unexpected token: {}",
-            next
-        ))),
+        _ => Err(CompilerError {
+            kind: CompilerErrorKind::TokenizerError,
+            message: format!("Unexpected token: {}", next),
+            location: None,
+        }),
     }
 }
 

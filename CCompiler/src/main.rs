@@ -2,7 +2,7 @@ use flameberrycc::syntax_analyzer::{display_translationunit, SyntaxAnalyzer};
 use flameberrycc::tokenizer::Tokenizer;
 use std::{fs, time::Instant};
 
-fn compile(src: &str) {
+fn compile(src: &str, srcpath: &str) {
     let preprocessed_src = flameberrycc::preprocessor::preprocess(&src);
     let mut tokenizer = Tokenizer::new(&preprocessed_src);
 
@@ -14,19 +14,22 @@ fn compile(src: &str) {
     match parser.parse() {
         Ok(translation_unit) => display_translationunit(&translation_unit),
         // Ok(translation_unit) => println!("{:?}", translation_unit),
-        Err(err) => panic!("Parser failed with error: {}", err),
+        Err(err) => panic!("{}:{}", srcpath, err),
     }
 }
 
 fn compile_file(srcpath: &str) {
     let src = fs::read_to_string(srcpath);
     println!("{}:", srcpath);
-    compile(&src.unwrap_or_else(|err| {
-        panic!(
-            "Failed to read source file: {}: with error: {}",
-            srcpath, err
-        )
-    }));
+    compile(
+        &src.unwrap_or_else(|err| {
+            panic!(
+                "Failed to read source file: {}: with error: {}",
+                srcpath, err
+            )
+        }),
+        srcpath,
+    );
 }
 
 fn run_tests(testpath: &str) {
@@ -48,7 +51,7 @@ fn run_tests(testpath: &str) {
             })
         };
 
-        compile(&testprogramsrc);
+        compile(&testprogramsrc, testcasepath.to_str().unwrap());
     }
 }
 
