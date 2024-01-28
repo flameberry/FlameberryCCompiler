@@ -7,20 +7,28 @@ fn compile(src: &str, srcpath: &str) {
     let mut tokenizer = Tokenizer::new(&preprocessed_src);
 
     // Display output for debugging
-    println!("Original:\n{}", src);
-    println!("Preprocessed:\n{}", preprocessed_src);
+    // println!("Original:\n{}", src);
+    // println!("Preprocessed:\n{}", preprocessed_src);
+
+    // loop {
+    //     match tokenizer.next_token() {
+    //         Ok(Some(token)) => println!("{:?}", token),
+    //         Ok(None) => break,
+    //         Err(err) => panic!("{}", err),
+    //     }
+    // }
 
     let mut parser = SyntaxAnalyzer::new(&mut tokenizer);
     match parser.parse() {
         Ok(translation_unit) => display_translationunit(&translation_unit),
         // Ok(translation_unit) => println!("{:?}", translation_unit),
-        Err(err) => panic!("{}:{}", srcpath, err),
+        Err(err) => println!("{}:{}", srcpath, err),
     }
 }
 
 fn compile_file(srcpath: &str) {
     let src = fs::read_to_string(srcpath);
-    println!("{}:", srcpath);
+    println!("Compiling {}...", srcpath);
     compile(
         &src.unwrap_or_else(|err| {
             panic!(

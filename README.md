@@ -4,7 +4,11 @@ Flameberry C compiler is primitive C (ISO 17 standard compliant) compiler which 
 **Currently it supports:**
 1. Preprocessing comments
 2. Lexing every kind of C token
-3. Parsing of External Variable and Function Declarations
+3. Parsing of:
+    1. External Declarations
+    2. Function Definitions
+    3. Return Statements
+    4. Additive Expressions
 4. Generation of basic Abstract Syntax Tree for the C Translation Unit
 
 ## Demo

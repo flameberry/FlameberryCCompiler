@@ -5,7 +5,7 @@ use debug_tree::*;
 
 use crate::errors::{CompilerError, CompilerErrorKind};
 use crate::node::{Node, Span};
-use crate::tokenizer::{Keyword, TokenType, Tokenizer};
+use crate::tokenizer::{FloatingPointType, IntegerType, Keyword, TokenType, Tokenizer};
 
 #[derive(Debug)]
 enum TypeSpecifier {
@@ -42,19 +42,89 @@ enum StorageClassSpecifier {
 
 #[derive(Debug)]
 enum Constant {
-    Integer(i64), // TODO: Abstract this later into long, short integers
-    Float(f32),   // TODO: Abstract this later into long, short floating point numbers
+    Integer(IntegerType),     // TODO: Abstract this later into long, short integers
+    Float(FloatingPointType), // TODO: Abstract this later into long, short floating point numbers
 }
 
 type StringLiteral = Vec<char>;
 
 #[derive(Debug)]
+pub enum BinaryOperator {
+    /// `lhs[rhs]`
+    Index,
+    /// `lhs * rhs`
+    Multiply,
+    /// `lhs / rhs`
+    Divide,
+    /// `lhs % rhs`
+    Modulo,
+    /// `lhs + rhs`
+    Plus,
+    /// `lhs - rhs`
+    Minus,
+    /// `lhs << rhs`
+    ShiftLeft,
+    /// `lhs >> rhs`
+    ShiftRight,
+    /// `lhs < rhs`
+    Less,
+    /// `lhs > rhs`
+    Greater,
+    /// `lhs <= rhs`
+    LessOrEqual,
+    /// `lhs >= rhs`
+    GreaterOrEqual,
+    /// `lhs == rhs`
+    Equals,
+    /// `lhs != rhs`
+    NotEquals,
+    /// `lhs & rhs`
+    BitwiseAnd,
+    /// `lhs ^ rhs`
+    BitwiseXor,
+    /// `lhs | rhs`
+    BitwiseOr,
+    /// `lhs && rhs`
+    LogicalAnd,
+    /// `lhs || rhs`
+    LogicalOr,
+    /// `lhs = rhs`
+    Assign,
+    /// `lhs *= rhs`
+    AssignMultiply,
+    /// `lhs /= rhs`
+    AssignDivide,
+    /// `lhs %= rhs`
+    AssignModulo,
+    /// `lhs += rhs`
+    AssignPlus,
+    /// `lhs -= rhs`
+    AssignMinus,
+    /// `lhs <<= rhs`
+    AssignShiftLeft,
+    /// `lhs >>= rhs`
+    AssignShiftRight,
+    /// `lhs &= rhs`
+    AssignBitwiseAnd,
+    /// `lhs ^= rhs`
+    AssignBitwiseXor,
+    /// `lhs |= rhs`
+    AssignBitwiseOr,
+}
+
+#[derive(Debug)]
+struct BinaryOperatorExpression {
+    operator: Node<BinaryOperator>,
+    lhs: Node<Expression>,
+    rhs: Node<Expression>,
+}
+
+#[derive(Debug)]
 enum Expression {
-    // Primary Expression
-    Identifier(Node<String>), // Should this be a &'a str?
-    Constant(Node<Constant>),
-    StringLiteral(Node<StringLiteral>),
-    // TODO: Support more expressions
+    Identifier(String), // TODO: This should be a pointer to the symbol table entry of the identifier
+    Constant(Constant),
+    StringLiteral(StringLiteral),
+    BinaryOperator(Box<BinaryOperatorExpression>),
 }
 
 #[derive(Debug)]
@@ -82,7 +152,7 @@ enum Declarator {
 struct FunctionParameter {
     // This key difference between this struct and `Declaration` struct is that the `declarator` is Optional here
     specifiers: Vec<Node<DeclarationSpecifier>>,
-    declarator: Option<Node<Declarator>>, // Th
+    declarator: Option<Node<Declarator>>,
 }
 
 #[derive(Debug)]
@@ -95,13 +165,13 @@ struct FunctionDeclarator {
 struct FunctionDefinition {
     specifiers: Vec<Node<DeclarationSpecifier>>,
     declarator: Node<FunctionDeclarator>,
-    body: Node<Statement>, // Function body can be one statement or a compound statement
+    body: Option<Node<Statement>>, // Function body can be one statement or a compound statement
 }
 
 #[derive(Debug)]
 struct Declaration {
     // Function Declaration
-    // int                      function(DeclarationSpecifier param1, DeclarationSpecifier param2);
+    // int                      function(DeclarationSpecifiers param1, DeclarationSpecifiers param2);
     // ^^^                      ^^^
     // DeclarationSpecifier     Declarator
 
@@ -115,14 +185,22 @@ struct Declaration {
 
 #[derive(Debug)]
 enum BlockItem {
-    Declaration(Node<Declaration>),
-    Statement(Node<Statement>),
+    Declaration(Declaration),
+    Statement(Statement),
 }
 
 #[derive(Debug)]
 enum Statement {
+    LabeledStatement,
+    CompoundStatement(Vec<Node<BlockItem>>),
+    ExpressionStatement(Expression),
+    SelectionStatement,
+    IterationStatement,
+    // Jump Statements
+    GotoStatement,
+    ContinueStatement,
+    BreakStatement,
     ReturnStatement(Node<Expression>),
-    Compound(Vec<Node<BlockItem>>),
 }
 
 #[derive(Debug)]
@@ -166,7 +244,91 @@ impl fmt::Display for DeclarationSpecifier {
     }
 }
 
-// TODO: Make this debug mode only to save performance in release mode
+fn display_expr(expression: &Node<Expression>) {
+    match &expression.node {
+        Expression::Constant(constant) => {
+            add_branch!("Constant");
+            match constant {
+                Constant::Float(float) => add_leaf!("Float -> {:?} {}", float, expression.span),
+                Constant::Integer(int) => add_leaf!("Integer -> {:?}, {}", int, expression.span),
+            }
+        }
+        Expression::Identifier(identifier) => {
+            add_leaf!("Identifier -> \"{}\" {}", identifier, expression.span)
+        }
+        Expression::BinaryOperator(binaryexpr) => {
+            add_branch!("BinaryOperatorExpression {}", expression.span);
+            {
+                add_branch!(
+                    "Operator -> {:?} {}",
+                    binaryexpr.operator.node,
+                    binaryexpr.operator.span
+                );
+            }
+            {
+                add_branch!("LHS");
+                display_expr(&binaryexpr.lhs);
+            }
+            {
+                add_branch!("RHS");
+                display_expr(&binaryexpr.rhs);
+            }
+        }
+        Expression::StringLiteral(_) => todo!(),
+    }
+}
+
+fn display_statement(statement: &Node<Statement>) {
+    match &statement.node {
+        Statement::ReturnStatement(expression) => {
+            add_branch!("Return Statement {}", statement.span);
+            display_expr(&expression);
+        }
+        _ => todo!(),
+    }
+}
+
+/// Display Declaration Specifiers
+fn display_declspec(specifiers: &Vec<Node<DeclarationSpecifier>>) {
+    add_branch!("DeclarationSpecifiers");
+    for declspec in specifiers {
+        add_leaf!("{}", declspec);
+    }
+}
+
+fn display_funcdeclarator(declarator: &FunctionDeclarator, span: Span) {
+    add_branch!("FunctionDeclarator");
+    add_leaf!(
+        "Identifier -> \"{}\" {}",
+        declarator.identifier,
+        Span::new(span.start, span.start + declarator.identifier.len())
+    );
+
+    // Add Parameters
+    add_branch!("FunctionParameters");
+    for param in &declarator.parameters {
+        // Add FunctionParameter
+        add_branch!("FunctionParameter {}", param.span);
+        display_declspec(&param.node.specifiers);
+
+        // Add Parameter Declarator
+        match &param.node.declarator {
+            Some(paramdecl) => match &paramdecl.node {
+                Declarator::DirectDeclarator(paramidentifier) => {
+                    add_leaf!(
+                        "DirectDeclarator -> \"{}\" {}",
+                        paramidentifier,
+                        paramdecl.span
+                    )
+                }
+                _ => panic!("Parameter Declarator should not be Function Declarator!"),
+            },
+            None => add_leaf!("DirectDeclarator -> None"),
+        }
+    }
+}
+
+// TODO: Have this be debug mode only
 pub fn display_translationunit(tunit: &TranslationUnit) {
     defer_print!();
     add_branch!("TranslationUnit");
@@ -174,57 +336,12 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
         match &extdecl.node {
             ExternalDeclaration::Declaration(decl) => {
                 add_branch!("Declaration {}", extdecl.span);
-                // Add declaration
-                {
-                    // Wrapped around brackets to ensure the tree indentation
-                    add_branch!("DeclarationSpecifiers");
-                    for declspec in &decl.specifiers {
-                        add_leaf!("{}", declspec);
-                    }
-                }
+                // Add declaration specifiers
+                display_declspec(&decl.specifiers);
                 // Add declarator
                 match &decl.declarator.node {
                     Declarator::FunctionDeclarator(funcdecl) => {
-                        add_branch!("FunctionDeclarator");
-                        add_leaf!(
-                            "Identifier -> \"{}\" {}",
-                            funcdecl.identifier,
-                            Span::new(
-                                decl.declarator.span.start,
-                                decl.declarator.span.start + funcdecl.identifier.len()
-                            )
-                        );
-
-                        // Add Parameters
-                        add_branch!("FunctionParameters");
-                        for param in &funcdecl.parameters {
-                            // Add FunctionParameter
-                            add_branch!("FunctionParameter {}", param.span);
-                            {
-                                // Wrapped around brackets to ensure the tree indentation
-                                add_branch!("DeclarationSpecifiers");
-                                for declspec in &param.node.specifiers {
-                                    add_leaf!("{}", declspec);
-                                }
-                            }
-
-                            // Add Parameter Declarator
-                            match &param.node.declarator {
-                                Some(paramdecl) => match &paramdecl.node {
-                                    Declarator::DirectDeclarator(paramidentifier) => {
-                                        add_leaf!(
-                                            "DirectDeclarator -> \"{}\" {}",
-                                            paramidentifier,
-                                            paramdecl.span
-                                        )
-                                    }
-                                    _ => panic!(
-                                        "Parameter Declarator should not be Function Declarator!"
-                                    ),
-                                },
-                                None => add_leaf!("DirectDeclarator -> None"),
-                            }
-                        }
+                        display_funcdeclarator(funcdecl, decl.declarator.span);
                     }
                     Declarator::DirectDeclarator(identifier) => {
                         add_leaf!(
@@ -237,6 +354,17 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
             }
             ExternalDeclaration::FunctionDefinition(funcdef) => {
                 add_branch!("FunctionDefinition {}", extdecl.span);
+                {
+                    add_branch!("FunctionDeclaration");
+                    display_declspec(&funcdef.specifiers);
+                    display_funcdeclarator(&funcdef.declarator.node, funcdef.declarator.span);
+                }
+
+                add_branch!("FunctionBody");
+                match &funcdef.body {
+                    Some(statement) => display_statement(&statement),
+                    None => add_leaf!("Empty"),
+                }
             }
         }
     }
@@ -245,7 +373,7 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
 /// Maps TokenType::Keyword -> DeclarationSpecifier
 fn keyword2declspec(keyword: Keyword) -> Option<DeclarationSpecifier> {
     let declspec = match keyword {
-        // Storage Classifiers
+        // Storage Class Specifiers
         Keyword::Auto => DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Auto),
         Keyword::Register => {
             DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Register)
@@ -306,17 +434,59 @@ impl<'a> SyntaxAnalyzer<'a> {
                     // 1. Parse a Declaration
                     let declaration = self.parse_declaration()?;
 
-                    // Expect a semicolon (Function Definitions will be handled later)
-                    self.accept_token(TokenType::Semicolon)?;
+                    match self.tokenizer.next_token()? {
+                        Some((token, start, _)) => match token {
+                            TokenType::OpenBrace => {
+                                // Parse a function definition
+                                if let Declarator::FunctionDeclarator(fdecl) =
+                                    declaration.declarator.node
+                                {
+                                    let funcbody = self.parse_funcbody()?;
+                                    let (_, brace_end) =
+                                        self.accept_token(TokenType::CloseBrace)?;
 
-                    // Calculate the span for the declaration
-                    let declspan_start = declaration.specifiers[0].span.start; // Here we assume that a declaration will always have atleast one specifier
-                    let declspan = Span::new(declspan_start, declaration.declarator.span.end);
+                                    tranlation_unit.external_declarations.push(Node::new(
+                                        ExternalDeclaration::FunctionDefinition(
+                                            FunctionDefinition {
+                                                specifiers: declaration.specifiers,
+                                                declarator: Node::new(
+                                                    fdecl,
+                                                    declaration.declarator.span,
+                                                ),
+                                                body: funcbody,
+                                            },
+                                        ),
+                                        Span::new(start, brace_end),
+                                    ));
+                                } else {
+                                    // This error should be removed in the future
+                                    // Because currently init-declarator-list is not supported in a direct declaration
+                                    // So if `{` is encountered, then it must be a function definition
+                                    // Reaching this line of code indicates the C code looks like this:
+                                    // const int variable_declaration{};
+                                    //                               ^^ Unexpected `{`
+                                    return Err(CompilerError {
+                                        kind: CompilerErrorKind::SyntaxError,
+                                        message: "Unexpected token: `{`, statement is not a valid function declarat".to_string(),
+                                        location: Some(start),
+                                    });
+                                }
+                            }
+                            TokenType::Semicolon => {
+                                // Calculate the span for the declaration
+                                let declspan_start = declaration.specifiers[0].span.start; // Here we assume that a declaration will always have atleast one specifier
+                                let declspan =
+                                    Span::new(declspan_start, declaration.declarator.span.end);
 
-                    tranlation_unit.external_declarations.push(Node::new(
-                        ExternalDeclaration::Declaration(declaration),
-                        declspan,
-                    ));
+                                tranlation_unit.external_declarations.push(Node::new(
+                                    ExternalDeclaration::Declaration(declaration),
+                                    declspan,
+                                ));
+                            }
+                            _ => todo!(),
+                        },
+                        _ => todo!(),
+                    }
 
                     // 2. Check for Function Definition
 
@@ -646,26 +816,134 @@ impl<'a> SyntaxAnalyzer<'a> {
         })
     }
 
-    fn parse_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
-        match self.tokenizer.next_token()? {
-            Some((token, start, end)) => match token {
-                TokenType::Integer(integer) => Ok(Node::new(
-                    Expression::Constant(Node::new(Constant::Integer(integer), Span::none())),
-                    Span::none(),
-                )),
-                _ => Err(CompilerError {
-                    kind: CompilerErrorKind::SyntaxError,
-                    message: "Currently only integer constants are supported as expressions"
-                        .to_string(),
-                    location: Some(start),
-                }),
-            },
-            _ => Err(CompilerError {
-                kind: CompilerErrorKind::SyntaxError,
-                message: "Expected expression, instead found end of file".to_string(),
-                location: None,
-            }),
+    fn parse_funcbody(&mut self) -> Result<Option<Node<Statement>>, CompilerError> {
+        let mut statement: Option<Statement> = None;
+        let mut span = Span::none();
+
+        while !matches!(
+            self.tokenizer.peek_token()?,
+            Some((TokenType::CloseBrace, _, _))
+        ) {
+            match self.tokenizer.next_token()? {
+                Some((token, start, _)) => match token {
+                    TokenType::Keyword(Keyword::Case | Keyword::Default) => {
+                        // Labeled Statement
+                        todo!()
+                    }
+                    TokenType::Keyword(Keyword::If | Keyword::Switch) => {
+                        // Selection Statement
+                        todo!()
+                    }
+                    TokenType::Keyword(Keyword::While | Keyword::For | Keyword::Do) => {
+                        // Iteration Statement
+                        todo!()
+                    }
+                    TokenType::Keyword(Keyword::Return) => {
+                        // Return -> Jump Statement
+                        let expression = self.parse_expr()?;
+                        let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+
+                        // Calculate span of the entire return statement
+                        // Span of return statement = (start of the return keyword, end of the semicolon token)
+                        span = Span::new(start, semicolon_end);
+                        // Create and store the actual return statement
+                        statement = Some(Statement::ReturnStatement(expression));
+                    }
+                    TokenType::Keyword(Keyword::Goto | Keyword::Continue | Keyword::Break) => {
+                        todo!()
+                    }
+                    _ => todo!(),
+                },
+                _ => todo!(),
+            };
         }
+
+        match statement {
+            Some(stmt) => Ok(Some(Node::new(stmt, span))),
+            None => Ok(None),
+        }
+    }
+
+    fn parse_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        // additive-expression:
+        //      multiplicative-expression
+        //      additive-expression + multiplicative-expression
+        //      additive-expression - multiplicative-expression
+        let mut expression = self.parse_primary_expr()?;
+
+        // Doing the parsing iteratively instead of recursively
+        loop {
+            match self.tokenizer.peek_token()? {
+                Some((token, start, end)) => match token {
+                    TokenType::Plus | TokenType::Minus => {
+                        // Consume the Plus/Minus token
+                        self.tokenizer.next_token()?;
+                        // Parse the RHS expression
+                        // For now it is assumed to be a primary expression
+                        let rhs = self.parse_primary_expr()?;
+
+                        let operator;
+                        if token == TokenType::Plus {
+                            operator = BinaryOperator::Plus;
+                        } else {
+                            operator = BinaryOperator::Minus;
+                        }
+
+                        let span = Span::new(expression.span.start, rhs.span.end);
+                        expression = Node::new(
+                            Expression::BinaryOperator(Box::new(BinaryOperatorExpression {
+                                operator: Node::new(operator, Span::new(start, end)),
+                                lhs: expression,
+                                rhs,
+                            })),
+                            span,
+                        );
+                    }
+                    _ => break,
+                },
+                None => {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SyntaxError,
+                        message: "Expected expression, instead got end of file".to_string(),
+                        location: None,
+                    })
+                }
+            }
+        }
+        Ok(expression)
+    }
+
+    fn parse_primary_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        let expression: Node<Expression> = match self.tokenizer.next_token()? {
+            Some((token, start, end)) => match token {
+                TokenType::Identifier(identifier) => {
+                    Node::new(Expression::Identifier(identifier), Span::new(start, end))
+                }
+                TokenType::Integer(integer) => Node::new(
+                    Expression::Constant(Constant::Integer(integer)),
+                    Span::new(start, end),
+                ),
+                TokenType::FloatingPoint(floatingpoint) => Node::new(
+                    Expression::Constant(Constant::Float(floatingpoint)),
+                    Span::new(start, end),
+                ),
+                _ => {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SyntaxError,
+                        message: format!("Unexpected constant expression: {:?}", token),
+                        location: Some(start),
+                    })
+                }
+            },
+            _ => {
+                return Err(CompilerError {
+                    kind: CompilerErrorKind::SyntaxError,
+                    message: "Expected expression, instead found end of file".to_string(),
+                    location: None,
+                })
+            }
+        };
+        Ok(expression)
     }
 
     fn accept_token_if<F>(&mut self, mut predicate: F) -> Result<(), CompilerError>
@@ -693,11 +971,13 @@ impl<'a> SyntaxAnalyzer<'a> {
         }
     }
 
-    fn accept_token(&mut self, tokentype: TokenType) -> Result<(), CompilerError> {
+    /// Forces the next token to be the given `tokentype`
+    /// Returns (start, end) both being character indices in the file
+    fn accept_token(&mut self, tokentype: TokenType) -> Result<(usize, usize), CompilerError> {
         match self.tokenizer.next_token()? {
-            Some((token, start, _)) => {
+            Some((token, start, end)) => {
                 if token == tokentype {
-                    Ok(())
+                    Ok((start, end))
                 } else {
                     Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
