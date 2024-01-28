@@ -461,10 +461,19 @@ impl<'a> SyntaxAnalyzer<'a> {
                                 if let Declarator::FunctionDeclarator(fdecl) =
                                     declaration.declarator.node
                                 {
+                                    // A function body must be a compound statement
                                     let funcbody = self.parse_compound_stmt()?;
+                                    // Consume the CloseBrace
                                     let (_, brace_end) =
                                         self.accept_token(TokenType::CloseBrace)?;
 
+                                    // Calculate the span of the function definition
+                                    // The span of the function definition is from the start of the declaration
+                                    // to the end of the definition, i.e., the CloseBrace end index
+                                    let declspan_start = declaration.specifiers[0].span.start;
+                                    let funcdef_span = Span::new(declspan_start, brace_end);
+
+                                    // Create and push the function definition that we just parsed
                                     tranlation_unit.external_declarations.push(Node::new(
                                         ExternalDeclaration::FunctionDefinition(
                                             FunctionDefinition {
@@ -476,7 +485,7 @@ impl<'a> SyntaxAnalyzer<'a> {
                                                 body: funcbody,
                                             },
                                         ),
-                                        Span::new(start, brace_end),
+                                        funcdef_span,
                                     ));
                                 } else {
                                     // This error should be removed in the future
@@ -832,7 +841,7 @@ impl<'a> SyntaxAnalyzer<'a> {
                         todo!()
                     }
                     TokenType::Keyword(keyword) => match keyword2declspec(&keyword) {
-                        Some(declspec) => {
+                        Some(_) => {
                             // Parse a declaration?
                             todo!()
                         }
@@ -884,6 +893,8 @@ impl<'a> SyntaxAnalyzer<'a> {
         Ok(Node::new(Statement::CompoundStatement(statements), span))
     }
 
+    /// Note: This function doesn't consume a semicolon at the end.
+    /// That must be handled by the calling function
     fn parse_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
         // additive-expression:
         //      multiplicative-expression

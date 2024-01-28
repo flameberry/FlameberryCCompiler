@@ -1,5 +1,5 @@
-int g_GlobalVariable;
-int g_NiceVar;
+static int g_GlobalVariable;
+static int g_NiceVar;
 
 int main(void) {
     {}
