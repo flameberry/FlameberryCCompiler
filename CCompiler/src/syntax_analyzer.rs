@@ -165,7 +165,7 @@ struct FunctionDeclarator {
 struct FunctionDefinition {
     specifiers: Vec<Node<DeclarationSpecifier>>,
     declarator: Node<FunctionDeclarator>,
-    body: Option<Node<Statement>>, // Function body can be one statement or a compound statement
+    body: Node<Statement>, // Function body can be one statement or a compound statement
 }
 
 #[derive(Debug)]
@@ -278,11 +278,26 @@ fn display_expr(expression: &Node<Expression>) {
     }
 }
 
-fn display_statement(statement: &Node<Statement>) {
-    match &statement.node {
+fn display_statement(statement: &Statement, span: &Span) {
+    match &statement {
         Statement::ReturnStatement(expression) => {
-            add_branch!("Return Statement {}", statement.span);
+            add_branch!("Return Statement {}", span);
             display_expr(&expression);
+        }
+        Statement::CompoundStatement(block) => {
+            add_branch!("Compound Statement {}", span);
+            if !block.is_empty() {
+                for blockitem in block {
+                    match &blockitem.node {
+                        BlockItem::Declaration(_) => todo!(),
+                        BlockItem::Statement(statement) => {
+                            display_statement(&statement, &blockitem.span);
+                        }
+                    }
+                }
+            } else {
+                add_leaf!("Empty");
+            }
         }
         _ => todo!(),
     }
@@ -361,9 +376,14 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
                 }
 
                 add_branch!("FunctionBody");
-                match &funcdef.body {
-                    Some(statement) => display_statement(&statement),
-                    None => add_leaf!("Empty"),
+                if let Statement::CompoundStatement(block) = &funcdef.body.node {
+                    if block.is_empty() {
+                        add_leaf!("Empty");
+                    } else {
+                        display_statement(&funcdef.body.node, &funcdef.body.span);
+                    }
+                } else {
+                    panic!("FunctionBody must be a compound statement");
                 }
             }
         }
@@ -371,7 +391,7 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
 }
 
 /// Maps TokenType::Keyword -> DeclarationSpecifier
-fn keyword2declspec(keyword: Keyword) -> Option<DeclarationSpecifier> {
+fn keyword2declspec(keyword: &Keyword) -> Option<DeclarationSpecifier> {
     let declspec = match keyword {
         // Storage Class Specifiers
         Keyword::Auto => DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Auto),
@@ -441,7 +461,7 @@ impl<'a> SyntaxAnalyzer<'a> {
                                 if let Declarator::FunctionDeclarator(fdecl) =
                                     declaration.declarator.node
                                 {
-                                    let funcbody = self.parse_funcbody()?;
+                                    let funcbody = self.parse_compound_stmt()?;
                                     let (_, brace_end) =
                                         self.accept_token(TokenType::CloseBrace)?;
 
@@ -487,49 +507,6 @@ impl<'a> SyntaxAnalyzer<'a> {
                         },
                         _ => todo!(),
                     }
-
-                    // 2. Check for Function Definition
-
-                    // match token {
-                    //     // External Declaration
-                    //     TokenType::Keyword(Keyword::Int) => {
-                    //         let typespecifier = TypeSpecifier::Int;
-
-                    //         let declarator = self.parse_declarator();
-
-                    //         // The next token is expected to be a declarator
-
-                    //         // 1. Check till next token is an Identifier
-                    //         // 2. Check if next token is `(`
-                    //         // 3.     If Yes then
-                    //         // 4.         Parse the parameters
-                    //         // 5.         Check if next token is `{`
-                    //         // 6.             If Yes then
-                    //         // 7.                 It is a function definition
-                    //         // 8.                 Parse the body of function till `}` is encountered
-                    //         // 9.             If No then
-                    //         // 10.                It is a function declaration
-                    //         // 11.                Consume a semicolon
-                    //         // 12.    If No then
-                    //         // 13.        It must be a variable declaration
-                    //         // 14.        Consume a semicolon
-                    //         // 15. Push back an External Declaration Node to Translation Unit
-                    //     }
-
-                    //     TokenType::Keyword(Keyword::Return) => {
-                    //         let expression = self
-                    //             .parse_expr()
-                    //             .unwrap_or_else(|err| panic!("Expected expression: {}", err));
-
-                    //         let statement: Node<Statement> =
-                    //             Node::new(Statement::ReturnStatement(expression), Span::none());
-
-                    //         self.accept_semicolon();
-
-                    //         println!("Successfully parsed Return Statement: {:?}", statement);
-                    //     }
-                    //     _ => panic!("Unexpected token: {:?}", token),
-                    // }
                 }
                 None => break,
             }
@@ -544,8 +521,7 @@ impl<'a> SyntaxAnalyzer<'a> {
 
         while let Some((token, start, end)) = self.tokenizer.peek_token()? {
             match token {
-                // keyword.clone() is used to avoid borrowing issues while returning an error containing `keyword` information
-                TokenType::Keyword(keyword) => match keyword2declspec(keyword.clone()) {
+                TokenType::Keyword(keyword) => match keyword2declspec(&keyword) {
                     Some(declspec) => {
                         specifiers.push(Node::new(declspec, Span::new(start, end)));
                         // Consume the peeked token as it is a Declaration Specifier
@@ -718,8 +694,7 @@ impl<'a> SyntaxAnalyzer<'a> {
         let mut specifiers: Vec<Node<DeclarationSpecifier>> = Vec::new();
         while let Some((token, start, end)) = self.tokenizer.peek_token()? {
             match token {
-                // keyword.clone() is used to avoid borrowing issues while returning an error containing `keyword` information
-                TokenType::Keyword(keyword) => match keyword2declspec(keyword.clone()) {
+                TokenType::Keyword(keyword) => match keyword2declspec(&keyword) {
                     Some(declspec) => {
                         // Push back the declaration specifiers
                         specifiers.push(Node::new(declspec, Span::new(start, end)));
@@ -816,9 +791,10 @@ impl<'a> SyntaxAnalyzer<'a> {
         })
     }
 
-    fn parse_funcbody(&mut self) -> Result<Option<Node<Statement>>, CompilerError> {
-        let mut statement: Option<Statement> = None;
-        let mut span = Span::none();
+    /// Note: This function doesn't consume either of OpenBrace and CloseBrace tokens associated with it.
+    /// It is the caller's responsibility to check for OpenBrace and consume a CloseBrace after calling this function.
+    fn parse_compound_stmt(&mut self) -> Result<Node<Statement>, CompilerError> {
+        let mut statements: Vec<Node<BlockItem>> = Vec::new();
 
         while !matches!(
             self.tokenizer.peek_token()?,
@@ -845,23 +821,67 @@ impl<'a> SyntaxAnalyzer<'a> {
 
                         // Calculate span of the entire return statement
                         // Span of return statement = (start of the return keyword, end of the semicolon token)
-                        span = Span::new(start, semicolon_end);
+                        let span = Span::new(start, semicolon_end);
                         // Create and store the actual return statement
-                        statement = Some(Statement::ReturnStatement(expression));
+                        statements.push(Node::new(
+                            BlockItem::Statement(Statement::ReturnStatement(expression)),
+                            span,
+                        ));
                     }
                     TokenType::Keyword(Keyword::Goto | Keyword::Continue | Keyword::Break) => {
                         todo!()
                     }
-                    _ => todo!(),
+                    TokenType::Keyword(keyword) => match keyword2declspec(&keyword) {
+                        Some(declspec) => {
+                            // Parse a declaration?
+                            todo!()
+                        }
+                        None => {
+                            todo!("Keyword encountered is: {:?}", keyword)
+                        }
+                    },
+                    TokenType::Identifier(_) => {
+                        // Either it can be a labeled statement
+                        // Or an expression statement
+                        todo!()
+                    }
+                    TokenType::OpenBrace => {
+                        // Parse a compound statement
+                        let compound_stmt = self.parse_compound_stmt()?;
+                        // Create a block item using the node and span of the compound statement
+                        // The span of the block item will be the same as that of the compound statement
+                        statements.push(Node::new(
+                            BlockItem::Statement(compound_stmt.node),
+                            compound_stmt.span,
+                        ));
+                        // Accept a closing brace
+                        self.accept_token(TokenType::CloseBrace)?;
+                    }
+                    _ => todo!("The start of the statement is: {:?}", token),
                 },
                 _ => todo!(),
             };
         }
 
-        match statement {
-            Some(stmt) => Ok(Some(Node::new(stmt, span))),
-            None => Ok(None),
-        }
+        // Calculate the span of the compound statement
+        let span = if !statements.is_empty() {
+            // If the compound statement is not empty then the span is the start index of the first statement
+            // and the end of the last statement
+            Span::new(
+                statements.first().unwrap().span.start,
+                statements.last().unwrap().span.end,
+            )
+        } else {
+            // peek_token() has to return some token as the while loop before this will only exit
+            // when the next token is CloseBrace
+            // If it were to retunrn None token then it would've been handled in the while loop itself
+            let start = self.tokenizer.peek_token()?.unwrap().1;
+            // If the compound statement is empty then the span is the start index of the CloseBrace
+            Span::new(start, start)
+        };
+
+        // Create and return the compound statement
+        Ok(Node::new(Statement::CompoundStatement(statements), span))
     }
 
     fn parse_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
