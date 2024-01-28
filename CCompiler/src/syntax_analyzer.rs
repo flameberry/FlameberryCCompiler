@@ -869,7 +869,7 @@ impl<'a> SyntaxAnalyzer<'a> {
         //      multiplicative-expression
         //      additive-expression + multiplicative-expression
         //      additive-expression - multiplicative-expression
-        let mut expression = self.parse_primary_expr()?;
+        let mut expression = self.parse_multiplicative_expr()?;
 
         // Doing the parsing iteratively instead of recursively
         loop {
@@ -880,14 +880,64 @@ impl<'a> SyntaxAnalyzer<'a> {
                         self.tokenizer.next_token()?;
                         // Parse the RHS expression
                         // For now it is assumed to be a primary expression
+                        let rhs = self.parse_multiplicative_expr()?;
+
+                        let operator = if token == TokenType::Plus {
+                            BinaryOperator::Plus
+                        } else {
+                            BinaryOperator::Minus
+                        };
+
+                        let span = Span::new(expression.span.start, rhs.span.end);
+                        expression = Node::new(
+                            Expression::BinaryOperator(Box::new(BinaryOperatorExpression {
+                                operator: Node::new(operator, Span::new(start, end)),
+                                lhs: expression,
+                                rhs,
+                            })),
+                            span,
+                        );
+                    }
+                    _ => break,
+                },
+                None => {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SyntaxError,
+                        message: "Expected expression, instead got end of file".to_string(),
+                        location: None,
+                    })
+                }
+            }
+        }
+        Ok(expression)
+    }
+
+    fn parse_multiplicative_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        // multiplicative-expression:
+        //      cast-expression
+        //      multiplicative-expression * cast-expression
+        //      multiplicative-expression / cast-expression
+        //      multiplicative-expression % cast-expression
+        let mut expression = self.parse_primary_expr()?;
+
+        // Doing the parsing iteratively instead of recursively
+        loop {
+            match self.tokenizer.peek_token()? {
+                Some((token, start, end)) => match token {
+                    TokenType::Asterisk | TokenType::Slash | TokenType::Percent => {
+                        // Consume the Plus/Minus token
+                        self.tokenizer.next_token()?;
+                        // Parse the RHS expression
+                        // For now it is assumed to be a primary expression
                         let rhs = self.parse_primary_expr()?;
 
-                        let operator;
-                        if token == TokenType::Plus {
-                            operator = BinaryOperator::Plus;
+                        let operator = if token == TokenType::Asterisk {
+                            BinaryOperator::Multiply
+                        } else if token == TokenType::Slash {
+                            BinaryOperator::Divide
                         } else {
-                            operator = BinaryOperator::Minus;
-                        }
+                            BinaryOperator::Modulo
+                        };
 
                         let span = Span::new(expression.span.start, rhs.span.end);
                         expression = Node::new(
@@ -927,10 +977,19 @@ impl<'a> SyntaxAnalyzer<'a> {
                     Expression::Constant(Constant::Float(floatingpoint)),
                     Span::new(start, end),
                 ),
+                TokenType::OpenParenthesis => {
+                    // Parse the entire expression inside the Parenthesis
+                    // A key thinking behind this is that the `parse_expr()` function
+                    // will keep parsing till it encounters something other than a recognized operator, constant or an identifier or another OpenParenthesis
+                    // So when encountered a CloseParenthesis, the function should return the existing expression, hence no need to check for that
+                    let expr = self.parse_expr()?;
+                    self.accept_token(TokenType::CloseParenthesis)?;
+                    expr
+                }
                 _ => {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
-                        message: format!("Unexpected constant expression: {:?}", token),
+                        message: format!("Expected expression, instead found: {:?}", token),
                         location: Some(start),
                     })
                 }
