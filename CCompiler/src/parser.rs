@@ -433,13 +433,13 @@ fn keyword2declspec(keyword: &Keyword) -> Option<DeclarationSpecifier> {
     Some(declspec)
 }
 
-pub struct SyntaxAnalyzer<'a> {
+pub struct Parser<'a> {
     tokenizer: &'a mut Tokenizer<'a>,
 }
 
-impl<'a> SyntaxAnalyzer<'a> {
+impl<'a> Parser<'a> {
     pub fn new(tokenizer: &'a mut Tokenizer<'a>) -> Self {
-        SyntaxAnalyzer { tokenizer }
+        Parser { tokenizer }
     }
 
     /// The main parse function that uses the tokenizer to generate an Abstract Syntax Tree
