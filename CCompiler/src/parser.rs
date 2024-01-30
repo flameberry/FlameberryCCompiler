@@ -800,85 +800,107 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_statement(&mut self) -> Result<Node<Statement>, CompilerError> {
+        match self.tokenizer.next_token()? {
+            Some((token, start, _)) => match token {
+                TokenType::Keyword(Keyword::Case | Keyword::Default) => {
+                    // Labeled Statement
+                    todo!()
+                }
+                TokenType::Keyword(Keyword::If | Keyword::Switch) => {
+                    // Selection Statement
+                    todo!()
+                }
+                TokenType::Keyword(Keyword::While | Keyword::For | Keyword::Do) => {
+                    // Iteration Statement
+                    todo!()
+                }
+                TokenType::Keyword(Keyword::Return) => {
+                    // Return -> Jump Statement
+                    let expression = self.parse_expr()?;
+                    let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+
+                    // Calculate span of the entire return statement
+                    // Span of return statement = (start of the return keyword, end of the semicolon token)
+                    let span = Span::new(start, semicolon_end);
+                    // Create and store the actual return statement
+                    Ok(Node::new(Statement::ReturnStatement(expression), span))
+                }
+                TokenType::Keyword(Keyword::Goto | Keyword::Continue | Keyword::Break) => {
+                    todo!()
+                }
+                TokenType::Keyword(keyword) => match keyword2declspec(&keyword) {
+                    Some(_) => {
+                        // Parse a declaration?
+                        todo!()
+                    }
+                    None => {
+                        todo!("Keyword encountered is: {:?}", keyword)
+                    }
+                },
+                TokenType::Identifier(_) => {
+                    // Either it can be a labeled statement
+                    // Or an expression statement
+                    todo!()
+                }
+                TokenType::OpenBrace => {
+                    // Parse a compound statement
+                    let compound_stmt = self.parse_compound_stmt()?;
+                    // Accept a closing brace
+                    self.accept_token(TokenType::CloseBrace)?;
+                    // Return the parsed compound statement
+                    Ok(Node::new(compound_stmt.node, compound_stmt.span))
+                }
+                _ => todo!("The start of the statement is: {:?}", token),
+            },
+            _ => todo!(),
+        }
+    }
+
     /// Note: This function doesn't consume either of OpenBrace and CloseBrace tokens associated with it.
     /// It is the caller's responsibility to check for OpenBrace and consume a CloseBrace after calling this function.
     fn parse_compound_stmt(&mut self) -> Result<Node<Statement>, CompilerError> {
-        let mut statements: Vec<Node<BlockItem>> = Vec::new();
+        let mut blockitems: Vec<Node<BlockItem>> = Vec::new();
 
         while !matches!(
             self.tokenizer.peek_token()?,
             Some((TokenType::CloseBrace, _, _))
         ) {
-            match self.tokenizer.next_token()? {
-                Some((token, start, _)) => match token {
-                    TokenType::Keyword(Keyword::Case | Keyword::Default) => {
-                        // Labeled Statement
-                        todo!()
-                    }
-                    TokenType::Keyword(Keyword::If | Keyword::Switch) => {
-                        // Selection Statement
-                        todo!()
-                    }
-                    TokenType::Keyword(Keyword::While | Keyword::For | Keyword::Do) => {
-                        // Iteration Statement
-                        todo!()
-                    }
-                    TokenType::Keyword(Keyword::Return) => {
-                        // Return -> Jump Statement
-                        let expression = self.parse_expr()?;
-                        let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+            match self.tokenizer.peek_token()? {
+                Some((token, _, _)) => {
+                    let mut is_declaration = false;
 
-                        // Calculate span of the entire return statement
-                        // Span of return statement = (start of the return keyword, end of the semicolon token)
-                        let span = Span::new(start, semicolon_end);
-                        // Create and store the actual return statement
-                        statements.push(Node::new(
-                            BlockItem::Statement(Statement::ReturnStatement(expression)),
-                            span,
-                        ));
-                    }
-                    TokenType::Keyword(Keyword::Goto | Keyword::Continue | Keyword::Break) => {
-                        todo!()
-                    }
-                    TokenType::Keyword(keyword) => match keyword2declspec(&keyword) {
-                        Some(_) => {
-                            // Parse a declaration?
-                            todo!()
+                    // The logic here is that a BlockItem can be either a declaration or a statement
+                    // If it is a declaration then it should start with a DeclarationSpecifier
+                    if let TokenType::Keyword(keyword) = token {
+                        if let Some(_) = keyword2declspec(&keyword) {
+                            // Parse a declaration
+                            is_declaration = true;
                         }
-                        None => {
-                            todo!("Keyword encountered is: {:?}", keyword)
-                        }
-                    },
-                    TokenType::Identifier(_) => {
-                        // Either it can be a labeled statement
-                        // Or an expression statement
-                        todo!()
                     }
-                    TokenType::OpenBrace => {
-                        // Parse a compound statement
-                        let compound_stmt = self.parse_compound_stmt()?;
+                    // If not then it must be a statement, hence we parse it here
+                    if !is_declaration {
+                        // Parse a statement
+                        let statement = self.parse_statement()?;
                         // Create a block item using the node and span of the compound statement
                         // The span of the block item will be the same as that of the compound statement
-                        statements.push(Node::new(
-                            BlockItem::Statement(compound_stmt.node),
-                            compound_stmt.span,
+                        blockitems.push(Node::new(
+                            BlockItem::Statement(statement.node),
+                            statement.span,
                         ));
-                        // Accept a closing brace
-                        self.accept_token(TokenType::CloseBrace)?;
                     }
-                    _ => todo!("The start of the statement is: {:?}", token),
-                },
+                }
                 _ => todo!(),
             };
         }
 
         // Calculate the span of the compound statement
-        let span = if !statements.is_empty() {
+        let span = if !blockitems.is_empty() {
             // If the compound statement is not empty then the span is the start index of the first statement
             // and the end of the last statement
             Span::new(
-                statements.first().unwrap().span.start,
-                statements.last().unwrap().span.end,
+                blockitems.first().unwrap().span.start,
+                blockitems.last().unwrap().span.end,
             )
         } else {
             // peek_token() has to return some token as the while loop before this will only exit
@@ -890,7 +912,7 @@ impl<'a> Parser<'a> {
         };
 
         // Create and return the compound statement
-        Ok(Node::new(Statement::CompoundStatement(statements), span))
+        Ok(Node::new(Statement::CompoundStatement(blockitems), span))
     }
 
     /// Note: This function doesn't consume a semicolon at the end.
