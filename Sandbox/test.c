@@ -2,11 +2,13 @@ static int g_GlobalVariable;
 static int g_NiceVar;
 static _Bool _g_AssumeABoolean;
 
+int nice = 69, wow(), good = 3;
+
 int main(void) {
     if (_g_AssumeABoolean)
     {
-        char character;
-        return character;
+        char ch = 'A';
+        return ch;
     }
     else if (g_NiceVar)
         return 69l;
@@ -15,8 +17,9 @@ int main(void) {
     else
         return 0;
 
-    break;
-    continue;
+    // break;
+
+    // continue;
 
     {}
     { return (g_GlobalVariable + 2u) * (((34l + g_NiceVar) * 34) * 4) * 23.6f - 45; }

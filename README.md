@@ -23,11 +23,13 @@ static int g_GlobalVariable;
 static int g_NiceVar;
 static _Bool _g_AssumeABoolean;
 
+int nice = 69, wow(), good = 3;
+
 int main(void) {
     if (_g_AssumeABoolean)
     {
-        char character;
-        return character;
+        char ch = 'A';
+        return ch;
     }
     else if (g_NiceVar)
         return 69l;
@@ -35,9 +37,6 @@ int main(void) {
         return 12ul;
     else
         return 0;
-
-    break;
-    continue;
 
     {}
     { return (g_GlobalVariable + 2u) * (((34l + g_NiceVar) * 34) * 4) * 23.6f - 45; }
@@ -48,159 +47,191 @@ const int NiceFunction(const int param1, float param2);
 unsigned int GetSum(unsigned int, unsigned int);
 ```
 
-```sh
+```
 TranslationUnit
-├╼ Declaration <0..27>
+├╼ Declaration <0..28>
 │ ├╼ DeclarationSpecifiers
 │ │ ├╼ StorageClassSpecifier -> Static <0..6>
 │ │ └╼ TypeSpecifier -> Int <7..10>
-│ └╼ DirectDeclarator -> "g_GlobalVariable" <11..27>
-├╼ Declaration <29..49>
+│ └╼ InitDeclaratorList
+│   └╼ InitDeclarator
+│     └╼ DirectDeclarator -> "g_GlobalVariable" <11..27>
+├╼ Declaration <29..50>
 │ ├╼ DeclarationSpecifiers
 │ │ ├╼ StorageClassSpecifier -> Static <29..35>
 │ │ └╼ TypeSpecifier -> Int <36..39>
-│ └╼ DirectDeclarator -> "g_NiceVar" <40..49>
-├╼ Declaration <51..81>
+│ └╼ InitDeclaratorList
+│   └╼ InitDeclarator
+│     └╼ DirectDeclarator -> "g_NiceVar" <40..49>
+├╼ Declaration <51..82>
 │ ├╼ DeclarationSpecifiers
 │ │ ├╼ StorageClassSpecifier -> Static <51..57>
 │ │ └╼ TypeSpecifier -> Bool <58..63>
-│ └╼ DirectDeclarator -> "_g_AssumeABoolean" <64..81>
-├╼ FunctionDefinition <84..434>
+│ └╼ InitDeclaratorList
+│   └╼ InitDeclarator
+│     └╼ DirectDeclarator -> "_g_AssumeABoolean" <64..81>
+├╼ Declaration <84..115>
+│ ├╼ DeclarationSpecifiers
+│ │ └╼ TypeSpecifier -> Int <84..87>
+│ └╼ InitDeclaratorList
+│   ├╼ InitDeclarator
+│   │ ├╼ DirectDeclarator -> "nice" <88..92>
+│   │ └╼ Initializer
+│   │   └╼ Constant
+│   │     └╼ Integer -> Generic(69), <95..97>
+│   ├╼ InitDeclarator
+│   │ └╼ FunctionDeclarator
+│   │   ├╼ Identifier -> "wow" <99..102>
+│   │   └╼ FunctionParameters
+│   │     └╼ Empty
+│   └╼ InitDeclarator
+│     ├╼ DirectDeclarator -> "good" <106..110>
+│     └╼ Initializer
+│       └╼ Constant
+│         └╼ Integer -> Generic(3), <113..114>
+├╼ FunctionDefinition <117..435>
 │ ├╼ FunctionDeclaration
 │ │ ├╼ DeclarationSpecifiers
-│ │ │ └╼ TypeSpecifier -> Int <84..87>
+│ │ │ └╼ TypeSpecifier -> Int <117..120>
 │ │ └╼ FunctionDeclarator
-│ │   ├╼ Identifier -> "main" <88..92>
+│ │   ├╼ Identifier -> "main" <121..125>
 │ │   └╼ FunctionParameters
-│ │     └╼ FunctionParameter <93..98>
+│ │     └╼ FunctionParameter <126..131>
 │ │       ├╼ DeclarationSpecifiers
-│ │       │ └╼ TypeSpecifier -> Void <93..97>
+│ │       │ └╼ TypeSpecifier -> Void <126..130>
 │ │       └╼ DirectDeclarator -> None
 │ └╼ FunctionBody
-│   └╼ CompoundStatement <105..430>
-│     ├╼ IfStatement <105..312>
+│   └╼ CompoundStatement <138..431>
+│     ├╼ IfStatement <138..337>
 │     │ ├╼ IfExpression
-│     │ │ └╼ Identifier -> "_g_AssumeABoolean" <109..126>
+│     │ │ └╼ Identifier -> "_g_AssumeABoolean" <142..159>
 │     │ ├╼ ThenStatement
-│     │ │ └╼ CompoundStatement <142..183>
-│     │ │   ├╼ Declaration <142..157>
+│     │ │ └╼ CompoundStatement <175..208>
+│     │ │   ├╼ Declaration <175..189>
 │     │ │   │ ├╼ DeclarationSpecifiers
-│     │ │   │ │ └╼ TypeSpecifier -> Char <142..146>
-│     │ │   │ └╼ DirectDeclarator -> "character" <147..156>
-│     │ │   └╼ ReturnStatement <166..183>
-│     │ │     └╼ Identifier -> "character" <173..182>
+│     │ │   │ │ └╼ TypeSpecifier -> Char <175..179>
+│     │ │   │ └╼ InitDeclaratorList
+│     │ │   │   └╼ InitDeclarator
+│     │ │   │     ├╼ DirectDeclarator -> "ch" <180..182>
+│     │ │   │     └╼ Initializer
+│     │ │   │       └╼ Constant
+│     │ │   │         └╼ Character -> 'A'
+│     │ │   └╼ ReturnStatement <198..208>
+│     │ │     └╼ Identifier -> "ch" <198..208>
 │     │ └╼ ElseStatement
-│     │   └╼ IfStatement <199..312>
+│     │   └╼ IfStatement <224..337>
 │     │     ├╼ IfExpression
-│     │     │ └╼ Identifier -> "g_NiceVar" <203..212>
+│     │     │ └╼ Identifier -> "g_NiceVar" <228..237>
 │     │     ├╼ ThenStatement
-│     │     │ └╼ ReturnStatement <222..233>
+│     │     │ └╼ ReturnStatement <247..258>
 │     │     │   └╼ Constant
-│     │     │     └╼ Integer -> SignedLong(69), <229..232>
+│     │     │     └╼ Integer -> SignedLong(69), <247..258>
 │     │     └╼ ElseStatement
-│     │       └╼ IfStatement <243..312>
+│     │       └╼ IfStatement <268..337>
 │     │         ├╼ IfExpression
-│     │         │ └╼ Identifier -> "g_GlobalVariable" <247..263>
+│     │         │ └╼ Identifier -> "g_GlobalVariable" <272..288>
 │     │         ├╼ ThenStatement
-│     │         │ └╼ ReturnStatement <273..285>
+│     │         │ └╼ ReturnStatement <298..310>
 │     │         │   └╼ Constant
-│     │         │     └╼ Integer -> UnsignedLong(12), <280..284>
+│     │         │     └╼ Integer -> UnsignedLong(12), <298..310>
 │     │         └╼ ElseStatement
-│     │           └╼ ReturnStatement <303..312>
+│     │           └╼ ReturnStatement <328..337>
 │     │             └╼ Constant
-│     │               └╼ Integer -> Generic(0), <310..311>
-│     ├╼ BreakStatement <318..324>
-│     ├╼ ContinueStatement <329..338>
-│     ├╼ CompoundStatement <345..345>
+│     │               └╼ Integer -> Generic(0), <328..337>
+│     ├╼ CompoundStatement <346..346>
 │     │ └╼ Empty
-│     └╼ CompoundStatement <353..430>
-│       └╼ ReturnStatement <353..430>
-│         └╼ BinaryOperatorExpression <361..429>
-│           ├╼ Operator -> Minus <425..426>
+│     └╼ CompoundStatement <354..431>
+│       └╼ ReturnStatement <354..431>
+│         └╼ BinaryOperatorExpression <354..431>
+│           ├╼ Operator -> Minus <426..427>
 │           ├╼ LHS
-│           │ └╼ BinaryOperatorExpression <361..424>
-│           │   ├╼ Operator -> Multiply <417..418>
+│           │ └╼ BinaryOperatorExpression <362..425>
+│           │   ├╼ Operator -> Multiply <418..419>
 │           │   ├╼ LHS
-│           │   │ └╼ BinaryOperatorExpression <361..415>
-│           │   │   ├╼ Operator -> Multiply <384..385>
+│           │   │ └╼ BinaryOperatorExpression <362..416>
+│           │   │   ├╼ Operator -> Multiply <385..386>
 │           │   │   ├╼ LHS
-│           │   │   │ └╼ BinaryOperatorExpression <361..382>
-│           │   │   │   ├╼ Operator -> Plus <378..379>
+│           │   │   │ └╼ BinaryOperatorExpression <362..383>
+│           │   │   │   ├╼ Operator -> Plus <379..380>
 │           │   │   │   ├╼ LHS
-│           │   │   │   │ └╼ Identifier -> "g_GlobalVariable" <361..377>
+│           │   │   │   │ └╼ Identifier -> "g_GlobalVariable" <362..378>
 │           │   │   │   └╼ RHS
 │           │   │   │     └╼ Constant
-│           │   │   │       └╼ Integer -> Unsigned(2), <380..382>
+│           │   │   │       └╼ Integer -> Unsigned(2), <381..383>
 │           │   │   └╼ RHS
-│           │   │     └╼ BinaryOperatorExpression <389..415>
-│           │   │       ├╼ Operator -> Multiply <412..413>
+│           │   │     └╼ BinaryOperatorExpression <390..416>
+│           │   │       ├╼ Operator -> Multiply <413..414>
 │           │   │       ├╼ LHS
-│           │   │       │ └╼ BinaryOperatorExpression <389..410>
-│           │   │       │   ├╼ Operator -> Multiply <406..407>
+│           │   │       │ └╼ BinaryOperatorExpression <390..411>
+│           │   │       │   ├╼ Operator -> Multiply <407..408>
 │           │   │       │   ├╼ LHS
-│           │   │       │   │ └╼ BinaryOperatorExpression <389..404>
-│           │   │       │   │   ├╼ Operator -> Plus <393..394>
+│           │   │       │   │ └╼ BinaryOperatorExpression <390..405>
+│           │   │       │   │   ├╼ Operator -> Plus <394..395>
 │           │   │       │   │   ├╼ LHS
 │           │   │       │   │   │ └╼ Constant
-│           │   │       │   │   │   └╼ Integer -> SignedLong(34), <389..392>
+│           │   │       │   │   │   └╼ Integer -> SignedLong(34), <390..393>
 │           │   │       │   │   └╼ RHS
-│           │   │       │   │     └╼ Identifier -> "g_NiceVar" <395..404>
+│           │   │       │   │     └╼ Identifier -> "g_NiceVar" <396..405>
 │           │   │       │   └╼ RHS
 │           │   │       │     └╼ Constant
-│           │   │       │       └╼ Integer -> Generic(34), <408..410>
+│           │   │       │       └╼ Integer -> Generic(34), <409..411>
 │           │   │       └╼ RHS
 │           │   │         └╼ Constant
-│           │   │           └╼ Integer -> Generic(4), <414..415>
+│           │   │           └╼ Integer -> Generic(4), <415..416>
 │           │   └╼ RHS
 │           │     └╼ Constant
-│           │       └╼ Float -> Float(23.6) <419..424>
+│           │       └╼ Float -> Float(23.6) <420..425>
 │           └╼ RHS
 │             └╼ Constant
-│               └╼ Integer -> Generic(45), <427..429>
-├╼ FunctionDefinition <436..461>
+│               └╼ Integer -> Generic(45), <428..430>
+├╼ FunctionDefinition <437..462>
 │ ├╼ FunctionDeclaration
 │ │ ├╼ DeclarationSpecifiers
-│ │ │ ├╼ FunctionSpecifier -> Inline <436..442>
-│ │ │ └╼ TypeSpecifier -> Float <443..448>
+│ │ │ ├╼ FunctionSpecifier -> Inline <437..443>
+│ │ │ └╼ TypeSpecifier -> Float <444..449>
 │ │ └╼ FunctionDeclarator
-│ │   ├╼ Identifier -> "AdityaG" <449..456>
+│ │   ├╼ Identifier -> "AdityaG" <450..457>
 │ │   └╼ FunctionParameters
+│ │     └╼ Empty
 │ └╼ FunctionBody
 │   └╼ Empty
-├╼ Declaration <462..515>
+├╼ Declaration <463..518>
 │ ├╼ DeclarationSpecifiers
-│ │ ├╼ TypeQualifier -> Const <462..467>
-│ │ └╼ TypeSpecifier -> Int <468..471>
-│ └╼ FunctionDeclarator
-│   ├╼ Identifier -> "NiceFunction" <472..484>
-│   └╼ FunctionParameters
-│     ├╼ FunctionParameter <485..501>
-│     │ ├╼ DeclarationSpecifiers
-│     │ │ ├╼ TypeQualifier -> Const <485..490>
-│     │ │ └╼ TypeSpecifier -> Int <491..494>
-│     │ └╼ DirectDeclarator -> "param1" <495..501>
-│     └╼ FunctionParameter <503..515>
-│       ├╼ DeclarationSpecifiers
-│       │ └╼ TypeSpecifier -> Float <503..508>
-│       └╼ DirectDeclarator -> "param2" <509..515>
-└╼ Declaration <518..565>
+│ │ ├╼ TypeQualifier -> Const <463..468>
+│ │ └╼ TypeSpecifier -> Int <469..472>
+│ └╼ InitDeclaratorList
+│   └╼ InitDeclarator
+│     └╼ FunctionDeclarator
+│       ├╼ Identifier -> "NiceFunction" <473..485>
+│       └╼ FunctionParameters
+│         ├╼ FunctionParameter <486..502>
+│         │ ├╼ DeclarationSpecifiers
+│         │ │ ├╼ TypeQualifier -> Const <486..491>
+│         │ │ └╼ TypeSpecifier -> Int <492..495>
+│         │ └╼ DirectDeclarator -> "param1" <496..502>
+│         └╼ FunctionParameter <504..516>
+│           ├╼ DeclarationSpecifiers
+│           │ └╼ TypeSpecifier -> Float <504..509>
+│           └╼ DirectDeclarator -> "param2" <510..516>
+└╼ Declaration <519..567>
   ├╼ DeclarationSpecifiers
-  │ ├╼ TypeSpecifier -> Unsigned <518..526>
-  │ └╼ TypeSpecifier -> Int <527..530>
-  └╼ FunctionDeclarator
-    ├╼ Identifier -> "GetSum" <531..537>
-    └╼ FunctionParameters
-      ├╼ FunctionParameter <538..551>
-      │ ├╼ DeclarationSpecifiers
-      │ │ ├╼ TypeSpecifier -> Unsigned <538..546>
-      │ │ └╼ TypeSpecifier -> Int <547..550>
-      │ └╼ DirectDeclarator -> None
-      └╼ FunctionParameter <552..565>
-        ├╼ DeclarationSpecifiers
-        │ ├╼ TypeSpecifier -> Unsigned <552..560>
-        │ └╼ TypeSpecifier -> Int <561..564>
-        └╼ DirectDeclarator -> None
-Time taken: 3.388584ms
+  │ ├╼ TypeSpecifier -> Unsigned <519..527>
+  │ └╼ TypeSpecifier -> Int <528..531>
+  └╼ InitDeclaratorList
+    └╼ InitDeclarator
+      └╼ FunctionDeclarator
+        ├╼ Identifier -> "GetSum" <532..538>
+        └╼ FunctionParameters
+          ├╼ FunctionParameter <539..552>
+          │ ├╼ DeclarationSpecifiers
+          │ │ ├╼ TypeSpecifier -> Unsigned <539..547>
+          │ │ └╼ TypeSpecifier -> Int <548..551>
+          │ └╼ DirectDeclarator -> None
+          └╼ FunctionParameter <553..566>
+            ├╼ DeclarationSpecifiers
+            │ ├╼ TypeSpecifier -> Unsigned <553..561>
+            │ └╼ TypeSpecifier -> Int <562..565>
+            └╼ DirectDeclarator -> None
 ```
 
 ## Getting Started
