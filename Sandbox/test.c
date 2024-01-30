@@ -14,6 +14,9 @@ int main(void) {
     else
         return 0;
 
+    break;
+    continue;
+
     {}
     { return (g_GlobalVariable + 2u) * (((34l + g_NiceVar) * 34) * 4) * 23.6f - 45; }
 }

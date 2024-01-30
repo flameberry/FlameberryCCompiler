@@ -197,8 +197,8 @@ enum Statement {
     IfStatement(Box<IfStatement>),
     IterationStatement,
     GotoStatement,
-    ContinueStatement,
     BreakStatement,
+    ContinueStatement,
     ReturnStatement(Node<Expression>),
 }
 
@@ -287,11 +287,11 @@ fn display_expr(expression: &Node<Expression>) {
 fn display_statement(statement: &Statement, span: &Span) {
     match &statement {
         Statement::ReturnStatement(expression) => {
-            add_branch!("Return Statement {}", span);
+            add_branch!("ReturnStatement {}", span);
             display_expr(&expression);
         }
         Statement::CompoundStatement(block) => {
-            add_branch!("Compound Statement {}", span);
+            add_branch!("CompoundStatement {}", span);
             if !block.is_empty() {
                 for blockitem in block {
                     match &blockitem.node {
@@ -306,20 +306,22 @@ fn display_statement(statement: &Statement, span: &Span) {
             }
         }
         Statement::IfStatement(if_statement) => {
-            add_branch!("If Statement {}", span);
+            add_branch!("IfStatement {}", span);
             {
-                add_branch!("If Expression");
+                add_branch!("IfExpression");
                 display_expr(&if_statement.expression);
             }
             {
-                add_branch!("Then Statement");
+                add_branch!("ThenStatement");
                 display_statement(&if_statement.if_block.node, &if_statement.if_block.span);
             }
             if let Some(else_stmt) = &if_statement.else_block {
-                add_branch!("Else Statement");
+                add_branch!("ElseStatement");
                 display_statement(&else_stmt.node, &else_stmt.span);
             }
         }
+        Statement::BreakStatement => add_leaf!("BreakStatement {}", span),
+        Statement::ContinueStatement => add_leaf!("ContinueStatement {}", span),
         _ => todo!(),
     }
 }
@@ -894,8 +896,23 @@ impl<'a> Parser<'a> {
                     // Create and store the actual return statement
                     Ok(Node::new(Statement::ReturnStatement(expression), span))
                 }
-                TokenType::Keyword(Keyword::Goto | Keyword::Continue | Keyword::Break) => {
-                    todo!()
+                TokenType::Keyword(Keyword::Break) => {
+                    // Accept a semicolon
+                    let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+                    // Create and return a Break Statement
+                    Ok(Node::new(
+                        Statement::BreakStatement,
+                        Span::new(start, semicolon_end),
+                    ))
+                }
+                TokenType::Keyword(Keyword::Continue) => {
+                    // Accept a semicolon
+                    let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+                    // Create and return a Continue Statement
+                    Ok(Node::new(
+                        Statement::ContinueStatement,
+                        Span::new(start, semicolon_end),
+                    ))
                 }
                 TokenType::Keyword(keyword) => match keyword2declspec(&keyword) {
                     Some(_) => {
