@@ -1,6 +1,6 @@
 static int g_GlobalVariable;
 static int g_NiceVar;
-static int g_AssumeABoolean;
+static _Bool _g_AssumeABoolean;
 
 int main(void) {
     if (g_AssumeABoolean)

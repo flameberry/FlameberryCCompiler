@@ -427,11 +427,15 @@ fn keyword2declspec(keyword: &Keyword) -> Option<DeclarationSpecifier> {
         Keyword::Static => {
             DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Static)
         }
+        Keyword::_Thread_local => {
+            DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::ThreadLocal)
+        }
         Keyword::Typedef => {
             DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Typedef)
         }
 
         // Type Qualifiers
+        Keyword::_Atomic => DeclarationSpecifier::TypeQualifier(TypeQualifier::Atomic),
         Keyword::Const => DeclarationSpecifier::TypeQualifier(TypeQualifier::Const),
         Keyword::Volatile => DeclarationSpecifier::TypeQualifier(TypeQualifier::Volatile),
 
@@ -445,9 +449,12 @@ fn keyword2declspec(keyword: &Keyword) -> Option<DeclarationSpecifier> {
         Keyword::Double => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Double),
         Keyword::Signed => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Signed),
         Keyword::Unsigned => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Unsigned),
+        Keyword::_Bool => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Bool),
+        Keyword::_Complex => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Complex),
 
         // Function Specifiers
         Keyword::Inline => DeclarationSpecifier::FunctionSpecifier(FunctionSpecifier::Inline),
+        Keyword::_Noreturn => DeclarationSpecifier::FunctionSpecifier(FunctionSpecifier::NoReturn),
 
         // Unknown keyword present in declaration specifier
         _ => return None,

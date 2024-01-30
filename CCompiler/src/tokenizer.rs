@@ -38,6 +38,16 @@ pub enum Keyword {
     Void,
     Volatile,
     While,
+    _Alignas,
+    _Alignof,
+    _Atomic,
+    _Bool,
+    _Complex,
+    _Generic,
+    _Imaginary,
+    _Noreturn,
+    _Static_assert,
+    _Thread_local,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -351,7 +361,7 @@ impl<'a> Tokenizer<'a> {
 
             // Handle numbers and identifiers
             '0'..='9' => Ok(self.tokenize_number(src)?),
-            next @ '_' | next if next.is_alphabetic() => Ok(self.tokenize_identifier(src)?),
+            next if next == '_' || next.is_alphabetic() => Ok(self.tokenize_identifier(src)?),
 
             // Handle unsupported characters
             _ => Err(CompilerError {
@@ -511,6 +521,16 @@ impl<'a> Tokenizer<'a> {
             "void" => TokenType::Keyword(Keyword::Void),
             "volatile" => TokenType::Keyword(Keyword::Volatile),
             "while" => TokenType::Keyword(Keyword::While),
+            "_Alignas" => TokenType::Keyword(Keyword::_Alignas),
+            "_Alignof" => TokenType::Keyword(Keyword::_Alignof),
+            "_Atomic" => TokenType::Keyword(Keyword::_Atomic),
+            "_Bool" => TokenType::Keyword(Keyword::_Bool),
+            "_Complex" => TokenType::Keyword(Keyword::_Complex),
+            "_Generic" => TokenType::Keyword(Keyword::_Generic),
+            "_Imaginary" => TokenType::Keyword(Keyword::_Imaginary),
+            "_Noreturn" => TokenType::Keyword(Keyword::_Noreturn),
+            "_Static_assert" => TokenType::Keyword(Keyword::_Static_assert),
+            "_Thread_local" => TokenType::Keyword(Keyword::_Thread_local),
 
             // Else it is really an identifier
             _ => TokenType::Identifier(identifier.to_string()),
