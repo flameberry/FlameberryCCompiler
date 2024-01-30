@@ -156,7 +156,7 @@ impl<'a> Tokenizer<'a> {
             linerow: 0,
             linecol: 0,
             numeric_constant_regex: Regex::new(
-                r"^[+-]?(?P<number>\d+(?P<dot>\.\d+)?(?P<exp>[eE][+-]?\d+)?)((?P<suffix>[uUlLfFdD]))?\b"
+                r"^[+-]?(?P<number>\d+(?P<dot>\.\d+)?(?P<exp>[eE][+-]?\d+)?)((?i)(?P<suffix>(u|l|ul|ull|f|d)))?\b"
             ).unwrap()
             // Regex::new(r"^[+-]?(?P<number>\d+(\.\d+)?([eE][+-]?\d+)?)((?P<suffix>[uUlLfFdD]))?\b").unwrap();
         }
