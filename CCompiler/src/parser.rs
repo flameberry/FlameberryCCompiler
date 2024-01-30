@@ -295,7 +295,9 @@ fn display_statement(statement: &Statement, span: &Span) {
             if !block.is_empty() {
                 for blockitem in block {
                     match &blockitem.node {
-                        BlockItem::Declaration(_) => todo!(),
+                        BlockItem::Declaration(declaration) => {
+                            display_declaration(declaration, &blockitem.span)
+                        }
                         BlockItem::Statement(statement) => {
                             display_statement(&statement, &blockitem.span);
                         }
@@ -366,30 +368,32 @@ fn display_funcdeclarator(declarator: &FunctionDeclarator, span: Span) {
     }
 }
 
+fn display_declaration(declaration: &Declaration, span: &Span) {
+    add_branch!("Declaration {}", span);
+    // Add declaration specifiers
+    display_declspec(&declaration.specifiers);
+    // Add declarator
+    match &declaration.declarator.node {
+        Declarator::FunctionDeclarator(funcdecl) => {
+            display_funcdeclarator(funcdecl, declaration.declarator.span);
+        }
+        Declarator::DirectDeclarator(identifier) => {
+            add_leaf!(
+                "DirectDeclarator -> \"{}\" {}",
+                identifier,
+                declaration.declarator.span
+            );
+        }
+    }
+}
+
 // TODO: Have this be debug mode only
 pub fn display_translationunit(tunit: &TranslationUnit) {
     defer_print!();
     add_branch!("TranslationUnit");
     for extdecl in &tunit.external_declarations {
         match &extdecl.node {
-            ExternalDeclaration::Declaration(decl) => {
-                add_branch!("Declaration {}", extdecl.span);
-                // Add declaration specifiers
-                display_declspec(&decl.specifiers);
-                // Add declarator
-                match &decl.declarator.node {
-                    Declarator::FunctionDeclarator(funcdecl) => {
-                        display_funcdeclarator(funcdecl, decl.declarator.span);
-                    }
-                    Declarator::DirectDeclarator(identifier) => {
-                        add_leaf!(
-                            "DirectDeclarator -> \"{}\" {}",
-                            identifier,
-                            decl.declarator.span
-                        );
-                    }
-                }
-            }
+            ExternalDeclaration::Declaration(decl) => display_declaration(decl, &extdecl.span),
             ExternalDeclaration::FunctionDefinition(funcdef) => {
                 add_branch!("FunctionDefinition {}", extdecl.span);
                 {
@@ -959,23 +963,33 @@ impl<'a> Parser<'a> {
             Some((TokenType::CloseBrace, _, _))
         ) {
             match self.tokenizer.peek_token()? {
-                Some((token, _, _)) => {
+                Some((token, start, _)) => {
                     let mut is_declaration = false;
 
                     // The logic here is that a BlockItem can be either a declaration or a statement
                     // If it is a declaration then it should start with a DeclarationSpecifier
                     if let TokenType::Keyword(keyword) = token {
                         if let Some(_) = keyword2declspec(&keyword) {
-                            // Parse a declaration
                             is_declaration = true;
+                            // Parse a declaration
+                            let declaration = self.parse_declaration()?;
+                            // Accept a semicolon after the declaration
+                            let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+                            // Create a block item using the parsed declaration
+                            // The span of the block item =
+                            // start of the first token -> end of the semicolon after the declaration
+                            blockitems.push(Node::new(
+                                BlockItem::Declaration(declaration),
+                                Span::new(start, semicolon_end),
+                            ));
                         }
                     }
                     // If not then it must be a statement, hence we parse it here
                     if !is_declaration {
                         // Parse a statement
                         let statement = self.parse_statement()?;
-                        // Create a block item using the node and span of the compound statement
-                        // The span of the block item will be the same as that of the compound statement
+                        // Create a block item using the node and span of the statement
+                        // The span of the block item will be the same as that of the statement
                         blockitems.push(Node::new(
                             BlockItem::Statement(statement.node),
                             statement.span,

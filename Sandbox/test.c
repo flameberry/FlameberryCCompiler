@@ -3,9 +3,10 @@ static int g_NiceVar;
 static _Bool _g_AssumeABoolean;
 
 int main(void) {
-    if (g_AssumeABoolean)
+    if (_g_AssumeABoolean)
     {
-        return 23 + 44;
+        char character;
+        return character;
     }
     else if (g_NiceVar)
         return 69l;
