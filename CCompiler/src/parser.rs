@@ -194,13 +194,19 @@ enum Statement {
     LabeledStatement,
     CompoundStatement(Vec<Node<BlockItem>>),
     ExpressionStatement(Expression),
-    SelectionStatement,
+    IfStatement(Box<IfStatement>),
     IterationStatement,
-    // Jump Statements
     GotoStatement,
     ContinueStatement,
     BreakStatement,
     ReturnStatement(Node<Expression>),
+}
+
+#[derive(Debug)]
+struct IfStatement {
+    expression: Node<Expression>,
+    if_block: Node<Statement>,
+    else_block: Option<Node<Statement>>,
 }
 
 #[derive(Debug)]
@@ -297,6 +303,21 @@ fn display_statement(statement: &Statement, span: &Span) {
                 }
             } else {
                 add_leaf!("Empty");
+            }
+        }
+        Statement::IfStatement(if_statement) => {
+            add_branch!("If Statement {}", span);
+            {
+                add_branch!("If Expression");
+                display_expr(&if_statement.expression);
+            }
+            {
+                add_branch!("Then Statement");
+                display_statement(&if_statement.if_block.node, &if_statement.if_block.span);
+            }
+            if let Some(else_stmt) = &if_statement.else_block {
+                add_branch!("Else Statement");
+                display_statement(&else_stmt.node, &else_stmt.span);
             }
         }
         _ => todo!(),
@@ -807,9 +828,56 @@ impl<'a> Parser<'a> {
                     // Labeled Statement
                     todo!()
                 }
-                TokenType::Keyword(Keyword::If | Keyword::Switch) => {
-                    // Selection Statement
-                    todo!()
+                TokenType::Keyword(Keyword::If) => {
+                    // if (<expression>) <statement>
+                    //    ^ Accept this OpenParenthesis
+                    self.accept_token(TokenType::OpenParenthesis)?;
+
+                    // if (<expression>) <statement>
+                    //      ^^^ Parse this expression
+                    let if_expr = self.parse_expr()?;
+
+                    // if (<expression>) <statement>
+                    //                 ^ Accept this CloseParenthesis
+                    self.accept_token(TokenType::CloseParenthesis)?;
+
+                    // if (<expression>) <statement>
+                    //                    ^^^ Parse this statement
+                    let if_block = self.parse_statement()?;
+
+                    let else_block;
+                    let stmt_span;
+
+                    // Check for an else statement and parse it
+                    // Also calculate the span for the entire if statement
+                    if let Some((TokenType::Keyword(Keyword::Else), _, _)) =
+                        self.tokenizer.peek_token()?
+                    {
+                        // Consume the Else Token once it is confirmed that it is really an Else Token
+                        self.tokenizer.next_token()?;
+                        // Parse the else statement
+                        let else_stmt = self.parse_statement()?;
+                        // The span of the entire if statement =
+                        // Start of if keyword -> End of else statement
+                        stmt_span = Span::new(start, else_stmt.span.end);
+                        else_block = Some(else_stmt);
+                    } else {
+                        // There is no else statement
+                        else_block = None;
+                        // The span of the entire if statement =
+                        // Start of if keyword -> End of if statement
+                        stmt_span = Span::new(start, if_block.span.end);
+                    }
+
+                    // Create and return the If statement
+                    Ok(Node::new(
+                        Statement::IfStatement(Box::new(IfStatement {
+                            expression: if_expr,
+                            if_block,
+                            else_block,
+                        })),
+                        stmt_span,
+                    ))
                 }
                 TokenType::Keyword(Keyword::While | Keyword::For | Keyword::Do) => {
                     // Iteration Statement
