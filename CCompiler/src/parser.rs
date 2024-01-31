@@ -1177,6 +1177,48 @@ impl<'a> Parser<'a> {
     /// Note: This function doesn't consume a semicolon at the end.
     /// That must be handled by the calling function
     fn parse_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        // AND-expression:
+        //      equality-expression
+        //      AND-expression & equality-expression
+        let mut expression = self.parse_equality_expr()?;
+
+        // Doing the parsing iteratively instead of recursively
+        loop {
+            match self.tokenizer.peek_token()? {
+                Some((token, start, end)) => match token {
+                    TokenType::BitwiseAndOperator => {
+                        // Consume the BitwiseAndOperator token
+                        self.tokenizer.next_token()?;
+                        // Parse the RHS expression
+                        let rhs = self.parse_equality_expr()?;
+
+                        let operator = BinaryOperator::BitwiseAnd;
+
+                        let span = Span::new(expression.span.start, rhs.span.end);
+                        expression = Node::new(
+                            Expression::BinaryOperator(Box::new(BinaryOperatorExpression {
+                                operator: Node::new(operator, Span::new(start, end)),
+                                lhs: expression,
+                                rhs,
+                            })),
+                            span,
+                        );
+                    }
+                    _ => break,
+                },
+                None => {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SyntaxError,
+                        message: "Expected expression, instead got end of file".to_string(),
+                        location: None,
+                    })
+                }
+            }
+        }
+        Ok(expression)
+    }
+
+    fn parse_equality_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
         // equality-expression:
         //      relational-expression
         //      equality-expression == relational-expression
