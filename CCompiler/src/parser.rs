@@ -1177,6 +1177,53 @@ impl<'a> Parser<'a> {
     /// Note: This function doesn't consume a semicolon at the end.
     /// That must be handled by the calling function
     fn parse_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        // shift-expression:
+        //      additive-expression
+        //      shift-expression « additive-expression
+        //      shift-expression » additive-expression
+        let mut expression = self.parse_additive_expr()?;
+
+        // Doing the parsing iteratively instead of recursively
+        loop {
+            match self.tokenizer.peek_token()? {
+                Some((token, start, end)) => match token {
+                    TokenType::LeftShiftOperator | TokenType::RightShiftOperator => {
+                        // Consume the LeftShift/RightShift token
+                        self.tokenizer.next_token()?;
+                        // Parse the RHS expression
+                        let rhs = self.parse_additive_expr()?;
+
+                        let operator = if token == TokenType::LeftShiftOperator {
+                            BinaryOperator::ShiftLeft
+                        } else {
+                            BinaryOperator::ShiftRight
+                        };
+
+                        let span = Span::new(expression.span.start, rhs.span.end);
+                        expression = Node::new(
+                            Expression::BinaryOperator(Box::new(BinaryOperatorExpression {
+                                operator: Node::new(operator, Span::new(start, end)),
+                                lhs: expression,
+                                rhs,
+                            })),
+                            span,
+                        );
+                    }
+                    _ => break,
+                },
+                None => {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SyntaxError,
+                        message: "Expected expression, instead got end of file".to_string(),
+                        location: None,
+                    })
+                }
+            }
+        }
+        Ok(expression)
+    }
+
+    fn parse_additive_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
         // additive-expression:
         //      multiplicative-expression
         //      additive-expression + multiplicative-expression
