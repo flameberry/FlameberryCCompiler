@@ -18,7 +18,7 @@ int main(void) {
         return 0;
 
     {}
-    { return 4 & 12 ^ 13 | 1 && (g_GlobalVariable + 2u << 2 & 31) * (((34l + _g_AssumeABoolean == g_NiceVar >> 3) * 34) * 4) * 23.6f - 45 >= 25 != 0; }
+    { return 4 & 12 ^ 13 | 1 && 5 || (g_GlobalVariable + 2u << 2 & 31) * (((34l + _g_AssumeABoolean == g_NiceVar >> 3) * 34) * 4) * 23.6f - 45 >= 25 != 0; }
 }
 
 inline float AdityaG() {}
