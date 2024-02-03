@@ -121,11 +121,19 @@ struct BinaryOperatorExpression {
 }
 
 #[derive(Debug)]
+struct TernaryOperatorExpression {
+    condition: Node<Expression>,
+    if_expr: Node<Expression>,
+    else_expr: Node<Expression>,
+}
+
+#[derive(Debug)]
 enum Expression {
     Identifier(String), // TODO: This should be a pointer to the symbol table entry of the identifier
     Constant(Constant),
     StringLiteral(StringLiteral),
     BinaryOperator(Box<BinaryOperatorExpression>),
+    TernaryOperator(Box<TernaryOperatorExpression>),
 }
 
 #[derive(Debug, Clone)]
@@ -290,6 +298,21 @@ fn display_expr(expression: &Expression, span: &Span) {
             {
                 add_branch!("RHS");
                 display_expr(&binaryexpr.rhs.node, &binaryexpr.rhs.span);
+            }
+        }
+        Expression::TernaryOperator(ternaryexpr) => {
+            add_branch!("TernaryOperatorExpression {}", span);
+            {
+                add_branch!("Condition");
+                display_expr(&ternaryexpr.condition.node, &ternaryexpr.condition.span);
+            }
+            {
+                add_branch!("IfExpression");
+                display_expr(&ternaryexpr.if_expr.node, &ternaryexpr.if_expr.span);
+            }
+            {
+                add_branch!("ElseExpression");
+                display_expr(&ternaryexpr.else_expr.node, &ternaryexpr.else_expr.span);
             }
         }
         Expression::StringLiteral(_) => todo!(),
@@ -1176,6 +1199,54 @@ impl<'a> Parser<'a> {
     /// Note: This function doesn't consume a semicolon at the end.
     /// That must be handled by the calling function
     fn parse_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        self.parse_conditional_expr()
+    }
+
+    /// Follows recursive pattern to parse the conditional expression grammar
+    fn parse_conditional_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        // conditional-expression:
+        //      logical-OR-expression
+        //      logical-OR-expression ? expression : conditional-expression
+        let expression = self.parse_logical_OR_expr()?;
+
+        match self.tokenizer.peek_token()? {
+            Some((token, _, _)) => match token {
+                TokenType::QuestionMark => {
+                    // Consume the Question Mark
+                    self.tokenizer.next_token()?;
+                    // Parse the if expression
+                    let if_expr = self.parse_expr()?;
+                    // Accept a Colon as it is compulsory to have both the if and else expressions
+                    self.accept_token(TokenType::Colon)?;
+                    // Parse the else expression
+                    let else_expr = self.parse_conditional_expr()?;
+
+                    // Create and return a Ternary Operator Expression
+                    // Span of Ternary Operator Expression =
+                    // Start of condition -> End of else expression
+                    let span = Span::new(expression.span.start, else_expr.span.end);
+                    Ok(Node::new(
+                        Expression::TernaryOperator(Box::new(TernaryOperatorExpression {
+                            condition: expression,
+                            if_expr,
+                            else_expr,
+                        })),
+                        span,
+                    ))
+                }
+                _ => Ok(expression),
+            },
+            None => {
+                return Err(CompilerError {
+                    kind: CompilerErrorKind::SyntaxError,
+                    message: "Expected expression, instead got end of file".to_string(),
+                    location: None,
+                })
+            }
+        }
+    }
+
+    fn parse_logical_OR_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
         // logical-OR-expression:
         //      logical-AND-expression
         //      logical-OR-expression || logical-AND-expression
