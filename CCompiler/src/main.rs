@@ -3,8 +3,7 @@ use flameberrycc::tokenizer::Tokenizer;
 use std::{fs, time::Instant};
 
 fn compile(src: &str, srcpath: &str) {
-    let preprocessed_src = flameberrycc::preprocessor::preprocess(&src);
-    let mut tokenizer = Tokenizer::new(&preprocessed_src);
+    let mut tokenizer = Tokenizer::new(src);
 
     // Display output for debugging
     // println!("Original:\n{}", src);

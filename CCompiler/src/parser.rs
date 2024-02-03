@@ -1111,6 +1111,8 @@ impl<'a> Parser<'a> {
     fn parse_compound_stmt(&mut self) -> Result<Node<Statement>, CompilerError> {
         let mut blockitems: Vec<Node<BlockItem>> = Vec::new();
 
+        let span_start = self.tokenizer.get_cidx();
+
         while !matches!(
             self.tokenizer.peek_token()?,
             Some((TokenType::CloseBrace, _, _))
@@ -1157,17 +1159,14 @@ impl<'a> Parser<'a> {
         let span = if !blockitems.is_empty() {
             // If the compound statement is not empty then the span is the start index of the first statement
             // and the end of the last statement
-            Span::new(
-                blockitems.first().unwrap().span.start,
-                blockitems.last().unwrap().span.end,
-            )
+            Span::new(span_start, blockitems.last().unwrap().span.end)
         } else {
             // peek_token() has to return some token as the while loop before this will only exit
             // when the next token is CloseBrace
-            // If it were to retunrn None token then it would've been handled in the while loop itself
+            // If it were to return None token then it would've been handled in the while loop itself
             let start = self.tokenizer.peek_token()?.unwrap().1;
             // If the compound statement is empty then the span is the start index of the CloseBrace
-            Span::new(start, start)
+            Span::new(span_start, start)
         };
 
         // Create and return the compound statement

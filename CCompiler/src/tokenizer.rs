@@ -180,10 +180,20 @@ impl<'a> Tokenizer<'a> {
         }
 
         // Equivalent to self.skip_whitespace() except we don't advance the tokenizer
-        let (_, whitespace_bytes) = iter_while(self.srcbuffer, |ch| ch.is_whitespace());
+        let (_, mut skipped_bytes) = iter_while(self.srcbuffer, |ch| ch.is_whitespace());
 
         // Emulating advancement of the srcbuffer by skipping the whitespace
-        let temp_srcbuffer = &self.srcbuffer[whitespace_bytes..];
+        let mut temp_srcbuffer = &self.srcbuffer[skipped_bytes..];
+
+        // Emulating advancement of the srcbuffer by skipping all the consecutive single line comments
+        while temp_srcbuffer.starts_with("//") {
+            let (_, bytes) = iter_while(temp_srcbuffer, |ch| ch != '\n');
+            temp_srcbuffer = &temp_srcbuffer[bytes..];
+
+            let (_, leading_wbytes) = iter_while(temp_srcbuffer, |ch| ch.is_whitespace());
+            temp_srcbuffer = &temp_srcbuffer[leading_wbytes..];
+            skipped_bytes += bytes + leading_wbytes;
+        }
 
         if temp_srcbuffer.is_empty() {
             Ok(None)
@@ -191,10 +201,10 @@ impl<'a> Tokenizer<'a> {
             let (token, bytes) = self.tokenize(&temp_srcbuffer)?;
 
             // Store the peeked token info
-            self.peekedbytes = whitespace_bytes + bytes;
+            self.peekedbytes = skipped_bytes + bytes;
             self.peekedtoken = (
                 token,
-                self.cidx + whitespace_bytes,
+                self.cidx + skipped_bytes,
                 self.cidx + self.peekedbytes,
             );
 
@@ -225,6 +235,7 @@ impl<'a> Tokenizer<'a> {
 
         // Read the next token and return it
         self.skip_whitespace();
+        self.skip_comments();
 
         if self.srcbuffer.is_empty() {
             Ok(None)
@@ -239,6 +250,23 @@ impl<'a> Tokenizer<'a> {
 
             // Return the newly parsed token with it's start and end information
             Ok(Some((token, self.cidx - bytes, self.cidx)))
+        }
+    }
+
+    pub fn get_cidx(&self) -> usize {
+        self.cidx
+    }
+
+    fn skip_comments(&mut self) {
+        while self.srcbuffer.starts_with("//") {
+            let (_, bytes) = iter_while(self.srcbuffer, |ch| ch != '\n');
+
+            //  Update the actual buffer and it's index
+            self.cidx += bytes;
+            self.srcbuffer = &self.srcbuffer[bytes..];
+
+            // Skip the whitespace till the valid token of the next line
+            self.skip_whitespace();
         }
     }
 
