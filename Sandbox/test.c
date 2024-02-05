@@ -33,6 +33,9 @@ int main(void) {
         int j = i + 1;
     }
 
+    2 * 2;
+    ;
+
     switch (i * i + i)
     {
         case 2 * 32: return g_GlobalVariable * g_NiceVar;
