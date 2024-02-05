@@ -50,6 +50,30 @@ enum Constant {
 type StringLiteral = Vec<char>;
 
 #[derive(Debug)]
+pub enum UnaryOperator {
+    /// `operand++`
+    PostIncrement,
+    /// `operand--`
+    PostDecrement,
+    /// `++operand`
+    PreIncrement,
+    /// `--operand`
+    PreDecrement,
+    /// `&operand`
+    Address,
+    /// `*operand`
+    Indirection,
+    /// `+operand`
+    Plus,
+    /// `-operand`
+    Minus,
+    /// `~operand`
+    Complement,
+    /// `!operand`
+    Negate,
+}
+
+#[derive(Debug)]
 pub enum BinaryOperator {
     /// `lhs[rhs]`
     Index,
@@ -114,6 +138,12 @@ pub enum BinaryOperator {
 }
 
 #[derive(Debug)]
+struct UnaryOperatorExpression {
+    operator: Node<UnaryOperator>,
+    operand: Node<Expression>,
+}
+
+#[derive(Debug)]
 struct BinaryOperatorExpression {
     operator: Node<BinaryOperator>,
     lhs: Node<Expression>,
@@ -132,6 +162,7 @@ enum Expression {
     Identifier(String), // TODO: This should be a pointer to the symbol table entry of the identifier
     Constant(Constant),
     StringLiteral(StringLiteral),
+    UnaryOperator(Box<UnaryOperatorExpression>),
     BinaryOperator(Box<BinaryOperatorExpression>),
     TernaryOperator(Box<TernaryOperatorExpression>),
 }
@@ -281,6 +312,20 @@ fn display_expr(expression: &Expression, span: &Span) {
         }
         Expression::Identifier(identifier) => {
             add_leaf!("Identifier -> \"{}\" {}", identifier, span)
+        }
+        Expression::UnaryOperator(unaryexpr) => {
+            add_branch!("UnaryOperatorExpression {}", span);
+            {
+                add_branch!(
+                    "Operator -> {:?} {}",
+                    unaryexpr.operator.node,
+                    unaryexpr.operator.span
+                );
+            }
+            {
+                add_branch!("Expression");
+                display_expr(&unaryexpr.operand.node, &unaryexpr.operand.span);
+            }
         }
         Expression::BinaryOperator(binaryexpr) => {
             add_branch!("BinaryOperatorExpression {}", span);
@@ -522,6 +567,25 @@ fn keyword2declspec(keyword: &Keyword) -> Option<DeclarationSpecifier> {
     Some(declspec)
 }
 
+/// Token -> Assignment Binary Operator
+fn token2asgnbinaryop(token: &TokenType) -> Option<BinaryOperator> {
+    let binaryop = match token {
+        TokenType::Equals => BinaryOperator::Assign,
+        TokenType::PlusEquals => BinaryOperator::AssignPlus,
+        TokenType::MinusEquals => BinaryOperator::AssignMinus,
+        TokenType::AsteriskEquals => BinaryOperator::AssignMultiply,
+        TokenType::SlashEquals => BinaryOperator::AssignDivide,
+        TokenType::PercentEquals => BinaryOperator::AssignModulo,
+        TokenType::LeftShiftEqualsOperator => BinaryOperator::AssignShiftLeft,
+        TokenType::RightShiftEqualsOperator => BinaryOperator::AssignShiftRight,
+        TokenType::BitwiseOrEqualsOperator => BinaryOperator::AssignBitwiseOr,
+        TokenType::BitwiseAndEqualsOperator => BinaryOperator::AssignBitwiseAnd,
+        TokenType::ExclusiveOrEqualsOperator => BinaryOperator::AssignBitwiseXor,
+        _ => return None,
+    };
+    Some(binaryop)
+}
+
 pub struct Parser<'a> {
     tokenizer: &'a mut Tokenizer<'a>,
 }
@@ -715,9 +779,7 @@ impl<'a> Parser<'a> {
                     let span;
 
                     // Check for an intializer and calculate the total span of the InitDeclarator
-                    if let Some((TokenType::AssignmentOperator, _, _)) =
-                        self.tokenizer.peek_token()?
-                    {
+                    if let Some((TokenType::Equals, _, _)) = self.tokenizer.peek_token()? {
                         // Consume the Assignment Operator
                         self.tokenizer.next_token()?;
 
@@ -825,7 +887,7 @@ impl<'a> Parser<'a> {
                                 Span::new(start, fdeclarator_end),
                             ))
                         },
-                        Some((TokenType::Semicolon | TokenType::Comma | TokenType::AssignmentOperator, _, _)) => Ok(Node::new(
+                        Some((TokenType::Semicolon | TokenType::Comma | TokenType::Equals, _, _)) => Ok(Node::new(
                             Declarator::DirectDeclarator(identifier),
                             Span::new(start, end),
                         )),
@@ -1199,7 +1261,43 @@ impl<'a> Parser<'a> {
     /// Note: This function doesn't consume a semicolon at the end.
     /// That must be handled by the calling function
     fn parse_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
-        self.parse_conditional_expr()
+        self.parse_assignment_expr()
+    }
+
+    /// Recursively parses an Assignment Expression
+    fn parse_assignment_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        // assignment-expression:
+        //      conditional-expression
+        //      unary-expression assignment-operator assignment-expression
+        let expression = self.parse_conditional_expr()?;
+
+        // Check if the expression is a unary expression
+        // TODO: This if statement will never be hit, as parsing of unary expressions is not implemented yet
+        if let Expression::UnaryOperator(_) = &expression.node {
+            // Parse the second production of the grammar
+            if let Some((token, start, end)) = self.tokenizer.peek_token()? {
+                // Check if the token is some assignment operator
+                if let Some(operator) = token2asgnbinaryop(&token) {
+                    // If yes then consume that token
+                    self.tokenizer.next_token()?;
+                    // And then parse another assignment expression
+                    let rhs = self.parse_assignment_expr()?;
+                    // Calculate the span for the expression
+                    // Span = Start of lhs -> End of rhs
+                    let span = Span::new(expression.span.start, rhs.span.end);
+                    // Create a binary operator expression with the assignment operator and lhs and rhs
+                    return Ok(Node::new(
+                        Expression::BinaryOperator(Box::new(BinaryOperatorExpression {
+                            operator: Node::new(operator, Span::new(start, end)),
+                            lhs: expression,
+                            rhs,
+                        })),
+                        span,
+                    ));
+                }
+            }
+        }
+        Ok(expression)
     }
 
     /// Follows recursive pattern to parse the conditional expression grammar

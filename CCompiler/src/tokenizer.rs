@@ -94,7 +94,7 @@ pub enum TokenType {
     SlashEquals,               // /=
     Percent,                   // %
     PercentEquals,             // %=
-    AssignmentOperator,        // =
+    Equals,                    // =
     EqualityOperator,          // ==
     NotEqualsOperator,         // !=
     IncrementOperator,         // ++
@@ -339,7 +339,7 @@ impl<'a> Tokenizer<'a> {
             },
             '=' => match next2next {
                 Some('=') => Ok((TokenType::EqualityOperator, 2)),
-                _ => Ok((TokenType::AssignmentOperator, 1)),
+                _ => Ok((TokenType::Equals, 1)),
             },
             '!' => match next2next {
                 Some('=') => Ok((TokenType::NotEqualsOperator, 2)),
