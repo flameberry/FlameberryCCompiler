@@ -246,7 +246,7 @@ enum Statement {
     CompoundStatement(Vec<Node<BlockItem>>),
     ExpressionStatement(Expression),
     IfStatement(Box<IfStatement>),
-    IterationStatement,
+    WhileStatement(Box<WhileStatement>),
     GotoStatement,
     BreakStatement,
     ContinueStatement,
@@ -258,6 +258,12 @@ struct IfStatement {
     expression: Node<Expression>,
     if_block: Node<Statement>,
     else_block: Option<Node<Statement>>,
+}
+
+#[derive(Debug)]
+struct WhileStatement {
+    expression: Node<Expression>,
+    block: Node<Statement>,
 }
 
 #[derive(Debug)]
@@ -400,6 +406,17 @@ fn display_statement(statement: &Statement, span: &Span) {
             if let Some(else_stmt) = &if_statement.else_block {
                 add_branch!("ElseStatement");
                 display_statement(&else_stmt.node, &else_stmt.span);
+            }
+        }
+        Statement::WhileStatement(while_stmt) => {
+            add_branch!("WhileStatement {}", span);
+            {
+                add_branch!("WhileExpression");
+                display_expr(&while_stmt.expression.node, &while_stmt.expression.span);
+            }
+            {
+                add_branch!("WhileBlock");
+                display_statement(&while_stmt.block.node, &while_stmt.block.span);
             }
         }
         Statement::BreakStatement => add_leaf!("BreakStatement {}", span),
@@ -1130,9 +1147,26 @@ impl<'a> Parser<'a> {
                         stmt_span,
                     ))
                 }
-                TokenType::Keyword(Keyword::While | Keyword::For | Keyword::Do) => {
-                    // Iteration Statement
-                    todo!()
+                TokenType::Keyword(Keyword::For | Keyword::Do) => todo!(),
+                TokenType::Keyword(Keyword::While) => {
+                    // Accept a OpenParenthesis
+                    self.accept_token(TokenType::OpenParenthesis)?;
+                    // Parse the condition inside the while (<expression>) statement
+                    //                                       ^^^
+                    let expression = self.parse_expr()?;
+                    // Accept a CloseParenthesis
+                    self.accept_token(TokenType::CloseParenthesis)?;
+                    // Parse the while statement
+                    let block = self.parse_statement()?;
+
+                    // Calculate the span of the while statement
+                    // Span = Start of the `while` keyword -> End of the statement
+                    let span = Span::new(start, block.span.end);
+
+                    Ok(Node::new(
+                        Statement::WhileStatement(Box::new(WhileStatement { expression, block })),
+                        span,
+                    ))
                 }
                 TokenType::Keyword(Keyword::Return) => {
                     // Return -> Jump Statement
