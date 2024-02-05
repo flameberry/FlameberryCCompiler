@@ -25,6 +25,11 @@ int main(void) {
     {
         while (1)
             return 2;
+        do
+        {
+            char character = 'Z' + 'D';
+        } while (i == 5 - 3);
+
         int j = i + 1;
     }
 

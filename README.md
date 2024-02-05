@@ -44,6 +44,11 @@ int main(void) {
     {
         while (1)
             return 2;
+        do
+        {
+            char character = 'Z' + 'D';
+        } while (i == 5 - 3);
+
         int j = i + 1;
     }
 
@@ -104,7 +109,7 @@ TranslationUnit
 │     └╼ Initializer
 │       └╼ Constant
 │         └╼ Integer -> Generic(3), <113..114>
-├╼ FunctionDefinition <117..1057>
+├╼ FunctionDefinition <117..1149>
 │ ├╼ FunctionDeclaration
 │ │ ├╼ DeclarationSpecifiers
 │ │ │ └╼ TypeSpecifier -> Int <117..120>
@@ -116,7 +121,7 @@ TranslationUnit
 │ │       │ └╼ TypeSpecifier -> Void <126..130>
 │ │       └╼ DirectDeclarator -> None
 │ └╼ FunctionBody
-│   └╼ CompoundStatement <133..1053>
+│   └╼ CompoundStatement <133..1145>
 │     ├╼ IfStatement <201..582>
 │     │ ├╼ IfExpression
 │     │ │ └╼ BinaryOperatorExpression <205..230>
@@ -206,7 +211,7 @@ TranslationUnit
 │     │     └╼ Initializer
 │     │       └╼ Constant
 │     │         └╼ Integer -> Generic(0), <596..597>
-│     ├╼ WhileStatement <603..686>
+│     ├╼ WhileStatement <603..778>
 │     │ ├╼ WhileExpression
 │     │ │ └╼ BinaryOperatorExpression <610..616>
 │     │ │   ├╼ Operator -> Less <612..613>
@@ -216,7 +221,7 @@ TranslationUnit
 │     │ │     └╼ Constant
 │     │ │       └╼ Integer -> Generic(10), <614..616>
 │     │ └╼ WhileBlock
-│     │   └╼ CompoundStatement <623..686>
+│     │   └╼ CompoundStatement <623..778>
 │     │     ├╼ WhileStatement <632..663>
 │     │     │ ├╼ WhileExpression
 │     │     │ │ └╼ Constant
@@ -225,219 +230,251 @@ TranslationUnit
 │     │     │   └╼ ReturnStatement <654..663>
 │     │     │     └╼ Constant
 │     │     │       └╼ Integer -> Generic(2), <654..663>
-│     │     └╼ Declaration <672..686>
+│     │     ├╼ DoWhileStatement <672..754>
+│     │     │ ├╼ DoBlock
+│     │     │ │ └╼ CompoundStatement <684..724>
+│     │     │ │   └╼ Declaration <697..724>
+│     │     │ │     ├╼ DeclarationSpecifiers
+│     │     │ │     │ └╼ TypeSpecifier -> Char <697..701>
+│     │     │ │     └╼ InitDeclaratorList
+│     │     │ │       └╼ InitDeclarator
+│     │     │ │         ├╼ DirectDeclarator -> "character" <702..711>
+│     │     │ │         └╼ Initializer
+│     │     │ │           └╼ BinaryOperatorExpression <714..723>
+│     │     │ │             ├╼ Operator -> Plus <718..719>
+│     │     │ │             ├╼ LHS
+│     │     │ │             │ └╼ Constant
+│     │     │ │             │   └╼ Character -> 'Z'
+│     │     │ │             └╼ RHS
+│     │     │ │               └╼ Constant
+│     │     │ │                 └╼ Character -> 'D'
+│     │     │ └╼ DoWhileExpression
+│     │     │   └╼ BinaryOperatorExpression <742..752>
+│     │     │     ├╼ Operator -> Equals <744..746>
+│     │     │     ├╼ LHS
+│     │     │     │ └╼ Identifier -> "i" <742..743>
+│     │     │     └╼ RHS
+│     │     │       └╼ BinaryOperatorExpression <747..752>
+│     │     │         ├╼ Operator -> Minus <749..750>
+│     │     │         ├╼ LHS
+│     │     │         │ └╼ Constant
+│     │     │         │   └╼ Integer -> Generic(5), <747..748>
+│     │     │         └╼ RHS
+│     │     │           └╼ Constant
+│     │     │             └╼ Integer -> Generic(3), <751..752>
+│     │     └╼ Declaration <764..778>
 │     │       ├╼ DeclarationSpecifiers
-│     │       │ └╼ TypeSpecifier -> Int <672..675>
+│     │       │ └╼ TypeSpecifier -> Int <764..767>
 │     │       └╼ InitDeclaratorList
 │     │         └╼ InitDeclarator
-│     │           ├╼ DirectDeclarator -> "j" <676..677>
+│     │           ├╼ DirectDeclarator -> "j" <768..769>
 │     │           └╼ Initializer
-│     │             └╼ BinaryOperatorExpression <680..685>
-│     │               ├╼ Operator -> Plus <682..683>
+│     │             └╼ BinaryOperatorExpression <772..777>
+│     │               ├╼ Operator -> Plus <774..775>
 │     │               ├╼ LHS
-│     │               │ └╼ Identifier -> "i" <680..681>
+│     │               │ └╼ Identifier -> "i" <772..773>
 │     │               └╼ RHS
 │     │                 └╼ Constant
-│     │                   └╼ Integer -> Generic(1), <684..685>
-│     ├╼ SwitchStatement <698..804>
+│     │                   └╼ Integer -> Generic(1), <776..777>
+│     ├╼ SwitchStatement <790..896>
 │     │ ├╼ SwitchExpression
-│     │ │ └╼ BinaryOperatorExpression <706..715>
-│     │ │   ├╼ Operator -> Plus <712..713>
+│     │ │ └╼ BinaryOperatorExpression <798..807>
+│     │ │   ├╼ Operator -> Plus <804..805>
 │     │ │   ├╼ LHS
-│     │ │   │ └╼ BinaryOperatorExpression <706..711>
-│     │ │   │   ├╼ Operator -> Multiply <708..709>
+│     │ │   │ └╼ BinaryOperatorExpression <798..803>
+│     │ │   │   ├╼ Operator -> Multiply <800..801>
 │     │ │   │   ├╼ LHS
-│     │ │   │   │ └╼ Identifier -> "i" <706..707>
+│     │ │   │   │ └╼ Identifier -> "i" <798..799>
 │     │ │   │   └╼ RHS
-│     │ │   │     └╼ Identifier -> "i" <710..711>
+│     │ │   │     └╼ Identifier -> "i" <802..803>
 │     │ │   └╼ RHS
-│     │ │     └╼ Identifier -> "i" <714..715>
+│     │ │     └╼ Identifier -> "i" <806..807>
 │     │ └╼ SwitchBlock
-│     │   └╼ CompoundStatement <722..804>
-│     │     ├╼ CaseStatement <731..780>
+│     │   └╼ CompoundStatement <814..896>
+│     │     ├╼ CaseStatement <823..872>
 │     │     │ ├╼ CaseExpression
-│     │     │ │ └╼ BinaryOperatorExpression <736..742>
-│     │     │ │   ├╼ Operator -> Multiply <738..739>
+│     │     │ │ └╼ BinaryOperatorExpression <828..834>
+│     │     │ │   ├╼ Operator -> Multiply <830..831>
 │     │     │ │   ├╼ LHS
 │     │     │ │   │ └╼ Constant
-│     │     │ │   │   └╼ Integer -> Generic(2), <736..737>
+│     │     │ │   │   └╼ Integer -> Generic(2), <828..829>
 │     │     │ │   └╼ RHS
 │     │     │ │     └╼ Constant
-│     │     │ │       └╼ Integer -> Generic(32), <740..742>
+│     │     │ │       └╼ Integer -> Generic(32), <832..834>
 │     │     │ └╼ CaseBlock
-│     │     │   └╼ ReturnStatement <744..780>
-│     │     │     └╼ BinaryOperatorExpression <744..780>
-│     │     │       ├╼ Operator -> Multiply <768..769>
+│     │     │   └╼ ReturnStatement <836..872>
+│     │     │     └╼ BinaryOperatorExpression <836..872>
+│     │     │       ├╼ Operator -> Multiply <860..861>
 │     │     │       ├╼ LHS
-│     │     │       │ └╼ Identifier -> "g_GlobalVariable" <751..767>
+│     │     │       │ └╼ Identifier -> "g_GlobalVariable" <843..859>
 │     │     │       └╼ RHS
-│     │     │         └╼ Identifier -> "g_NiceVar" <770..779>
-│     │     └╼ DefaultStatement <789..804>
+│     │     │         └╼ Identifier -> "g_NiceVar" <862..871>
+│     │     └╼ DefaultStatement <881..896>
 │     │       └╼ DefaultBlock
-│     │         └╼ BreakStatement <798..804>
-│     └╼ CompoundStatement <879..1053>
-│       └╼ ReturnStatement <880..1053>
-│         └╼ TernaryOperatorExpression <880..1053>
+│     │         └╼ BreakStatement <890..896>
+│     └╼ CompoundStatement <971..1145>
+│       └╼ ReturnStatement <972..1145>
+│         └╼ TernaryOperatorExpression <972..1145>
 │           ├╼ Condition
-│           │ └╼ Identifier -> "_g_AssumeABoolean" <887..904>
+│           │ └╼ Identifier -> "_g_AssumeABoolean" <979..996>
 │           ├╼ IfExpression
-│           │ └╼ BinaryOperatorExpression <907..1047>
-│           │   ├╼ Operator -> LogicalOr <928..930>
+│           │ └╼ BinaryOperatorExpression <999..1139>
+│           │   ├╼ Operator -> LogicalOr <1020..1022>
 │           │   ├╼ LHS
-│           │   │ └╼ BinaryOperatorExpression <907..927>
-│           │   │   ├╼ Operator -> LogicalAnd <923..925>
+│           │   │ └╼ BinaryOperatorExpression <999..1019>
+│           │   │   ├╼ Operator -> LogicalAnd <1015..1017>
 │           │   │   ├╼ LHS
-│           │   │   │ └╼ BinaryOperatorExpression <907..922>
-│           │   │   │   ├╼ Operator -> BitwiseOr <919..920>
+│           │   │   │ └╼ BinaryOperatorExpression <999..1014>
+│           │   │   │   ├╼ Operator -> BitwiseOr <1011..1012>
 │           │   │   │   ├╼ LHS
-│           │   │   │   │ └╼ BinaryOperatorExpression <907..918>
-│           │   │   │   │   ├╼ Operator -> BitwiseXor <914..915>
+│           │   │   │   │ └╼ BinaryOperatorExpression <999..1010>
+│           │   │   │   │   ├╼ Operator -> BitwiseXor <1006..1007>
 │           │   │   │   │   ├╼ LHS
-│           │   │   │   │   │ └╼ BinaryOperatorExpression <907..913>
-│           │   │   │   │   │   ├╼ Operator -> BitwiseAnd <909..910>
+│           │   │   │   │   │ └╼ BinaryOperatorExpression <999..1005>
+│           │   │   │   │   │   ├╼ Operator -> BitwiseAnd <1001..1002>
 │           │   │   │   │   │   ├╼ LHS
 │           │   │   │   │   │   │ └╼ Constant
-│           │   │   │   │   │   │   └╼ Integer -> Generic(4), <907..908>
+│           │   │   │   │   │   │   └╼ Integer -> Generic(4), <999..1000>
 │           │   │   │   │   │   └╼ RHS
 │           │   │   │   │   │     └╼ Constant
-│           │   │   │   │   │       └╼ Integer -> Generic(12), <911..913>
+│           │   │   │   │   │       └╼ Integer -> Generic(12), <1003..1005>
 │           │   │   │   │   └╼ RHS
 │           │   │   │   │     └╼ Constant
-│           │   │   │   │       └╼ Integer -> Generic(13), <916..918>
+│           │   │   │   │       └╼ Integer -> Generic(13), <1008..1010>
 │           │   │   │   └╼ RHS
 │           │   │   │     └╼ Constant
-│           │   │   │       └╼ Integer -> Generic(1), <921..922>
+│           │   │   │       └╼ Integer -> Generic(1), <1013..1014>
 │           │   │   └╼ RHS
 │           │   │     └╼ Constant
-│           │   │       └╼ Integer -> Generic(5), <926..927>
+│           │   │       └╼ Integer -> Generic(5), <1018..1019>
 │           │   └╼ RHS
-│           │     └╼ BinaryOperatorExpression <932..1047>
-│           │       ├╼ Operator -> NotEquals <1043..1045>
+│           │     └╼ BinaryOperatorExpression <1024..1139>
+│           │       ├╼ Operator -> NotEquals <1135..1137>
 │           │       ├╼ LHS
-│           │       │ └╼ BinaryOperatorExpression <932..1042>
-│           │       │   ├╼ Operator -> GreaterOrEqual <1037..1039>
+│           │       │ └╼ BinaryOperatorExpression <1024..1134>
+│           │       │   ├╼ Operator -> GreaterOrEqual <1129..1131>
 │           │       │   ├╼ LHS
-│           │       │   │ └╼ BinaryOperatorExpression <932..1036>
-│           │       │   │   ├╼ Operator -> Minus <1032..1033>
+│           │       │   │ └╼ BinaryOperatorExpression <1024..1128>
+│           │       │   │   ├╼ Operator -> Minus <1124..1125>
 │           │       │   │   ├╼ LHS
-│           │       │   │   │ └╼ BinaryOperatorExpression <932..1031>
-│           │       │   │   │   ├╼ Operator -> Multiply <1024..1025>
+│           │       │   │   │ └╼ BinaryOperatorExpression <1024..1123>
+│           │       │   │   │   ├╼ Operator -> Multiply <1116..1117>
 │           │       │   │   │   ├╼ LHS
-│           │       │   │   │   │ └╼ BinaryOperatorExpression <932..1022>
-│           │       │   │   │   │   ├╼ Operator -> Multiply <965..966>
+│           │       │   │   │   │ └╼ BinaryOperatorExpression <1024..1114>
+│           │       │   │   │   │   ├╼ Operator -> Multiply <1057..1058>
 │           │       │   │   │   │   ├╼ LHS
-│           │       │   │   │   │   │ └╼ BinaryOperatorExpression <932..963>
-│           │       │   │   │   │   │   ├╼ Operator -> BitwiseAnd <959..960>
+│           │       │   │   │   │   │ └╼ BinaryOperatorExpression <1024..1055>
+│           │       │   │   │   │   │   ├╼ Operator -> BitwiseAnd <1051..1052>
 │           │       │   │   │   │   │   ├╼ LHS
-│           │       │   │   │   │   │   │ └╼ BinaryOperatorExpression <932..958>
-│           │       │   │   │   │   │   │   ├╼ Operator -> ShiftLeft <954..956>
+│           │       │   │   │   │   │   │ └╼ BinaryOperatorExpression <1024..1050>
+│           │       │   │   │   │   │   │   ├╼ Operator -> ShiftLeft <1046..1048>
 │           │       │   │   │   │   │   │   ├╼ LHS
-│           │       │   │   │   │   │   │   │ └╼ BinaryOperatorExpression <932..953>
-│           │       │   │   │   │   │   │   │   ├╼ Operator -> Plus <949..950>
+│           │       │   │   │   │   │   │   │ └╼ BinaryOperatorExpression <1024..1045>
+│           │       │   │   │   │   │   │   │   ├╼ Operator -> Plus <1041..1042>
 │           │       │   │   │   │   │   │   │   ├╼ LHS
-│           │       │   │   │   │   │   │   │   │ └╼ Identifier -> "g_GlobalVariable" <932..948>
+│           │       │   │   │   │   │   │   │   │ └╼ Identifier -> "g_GlobalVariable" <1024..1040>
 │           │       │   │   │   │   │   │   │   └╼ RHS
 │           │       │   │   │   │   │   │   │     └╼ Constant
-│           │       │   │   │   │   │   │   │       └╼ Integer -> Unsigned(2), <951..953>
+│           │       │   │   │   │   │   │   │       └╼ Integer -> Unsigned(2), <1043..1045>
 │           │       │   │   │   │   │   │   └╼ RHS
 │           │       │   │   │   │   │   │     └╼ Constant
-│           │       │   │   │   │   │   │       └╼ Integer -> Generic(2), <957..958>
+│           │       │   │   │   │   │   │       └╼ Integer -> Generic(2), <1049..1050>
 │           │       │   │   │   │   │   └╼ RHS
 │           │       │   │   │   │   │     └╼ Constant
-│           │       │   │   │   │   │       └╼ Integer -> Generic(31), <961..963>
+│           │       │   │   │   │   │       └╼ Integer -> Generic(31), <1053..1055>
 │           │       │   │   │   │   └╼ RHS
-│           │       │   │   │   │     └╼ BinaryOperatorExpression <970..1022>
-│           │       │   │   │   │       ├╼ Operator -> Multiply <1019..1020>
+│           │       │   │   │   │     └╼ BinaryOperatorExpression <1062..1114>
+│           │       │   │   │   │       ├╼ Operator -> Multiply <1111..1112>
 │           │       │   │   │   │       ├╼ LHS
-│           │       │   │   │   │       │ └╼ BinaryOperatorExpression <970..1017>
-│           │       │   │   │   │       │   ├╼ Operator -> Multiply <1013..1014>
+│           │       │   │   │   │       │ └╼ BinaryOperatorExpression <1062..1109>
+│           │       │   │   │   │       │   ├╼ Operator -> Multiply <1105..1106>
 │           │       │   │   │   │       │   ├╼ LHS
-│           │       │   │   │   │       │   │ └╼ BinaryOperatorExpression <970..1011>
-│           │       │   │   │   │       │   │   ├╼ Operator -> Equals <994..996>
+│           │       │   │   │   │       │   │ └╼ BinaryOperatorExpression <1062..1103>
+│           │       │   │   │   │       │   │   ├╼ Operator -> Equals <1086..1088>
 │           │       │   │   │   │       │   │   ├╼ LHS
-│           │       │   │   │   │       │   │   │ └╼ BinaryOperatorExpression <970..993>
-│           │       │   │   │   │       │   │   │   ├╼ Operator -> Plus <974..975>
+│           │       │   │   │   │       │   │   │ └╼ BinaryOperatorExpression <1062..1085>
+│           │       │   │   │   │       │   │   │   ├╼ Operator -> Plus <1066..1067>
 │           │       │   │   │   │       │   │   │   ├╼ LHS
 │           │       │   │   │   │       │   │   │   │ └╼ Constant
-│           │       │   │   │   │       │   │   │   │   └╼ Integer -> SignedLong(34), <970..973>
+│           │       │   │   │   │       │   │   │   │   └╼ Integer -> SignedLong(34), <1062..1065>
 │           │       │   │   │   │       │   │   │   └╼ RHS
-│           │       │   │   │   │       │   │   │     └╼ Identifier -> "_g_AssumeABoolean" <976..993>
+│           │       │   │   │   │       │   │   │     └╼ Identifier -> "_g_AssumeABoolean" <1068..1085>
 │           │       │   │   │   │       │   │   └╼ RHS
-│           │       │   │   │   │       │   │     └╼ BinaryOperatorExpression <997..1011>
-│           │       │   │   │   │       │   │       ├╼ Operator -> ShiftRight <1007..1009>
+│           │       │   │   │   │       │   │     └╼ BinaryOperatorExpression <1089..1103>
+│           │       │   │   │   │       │   │       ├╼ Operator -> ShiftRight <1099..1101>
 │           │       │   │   │   │       │   │       ├╼ LHS
-│           │       │   │   │   │       │   │       │ └╼ Identifier -> "g_NiceVar" <997..1006>
+│           │       │   │   │   │       │   │       │ └╼ Identifier -> "g_NiceVar" <1089..1098>
 │           │       │   │   │   │       │   │       └╼ RHS
 │           │       │   │   │   │       │   │         └╼ Constant
-│           │       │   │   │   │       │   │           └╼ Integer -> Generic(3), <1010..1011>
+│           │       │   │   │   │       │   │           └╼ Integer -> Generic(3), <1102..1103>
 │           │       │   │   │   │       │   └╼ RHS
 │           │       │   │   │   │       │     └╼ Constant
-│           │       │   │   │   │       │       └╼ Integer -> Generic(34), <1015..1017>
+│           │       │   │   │   │       │       └╼ Integer -> Generic(34), <1107..1109>
 │           │       │   │   │   │       └╼ RHS
 │           │       │   │   │   │         └╼ Constant
-│           │       │   │   │   │           └╼ Integer -> Generic(4), <1021..1022>
+│           │       │   │   │   │           └╼ Integer -> Generic(4), <1113..1114>
 │           │       │   │   │   └╼ RHS
 │           │       │   │   │     └╼ Constant
-│           │       │   │   │       └╼ Float -> Float(23.6) <1026..1031>
+│           │       │   │   │       └╼ Float -> Float(23.6) <1118..1123>
 │           │       │   │   └╼ RHS
 │           │       │   │     └╼ Constant
-│           │       │   │       └╼ Integer -> Generic(45), <1034..1036>
+│           │       │   │       └╼ Integer -> Generic(45), <1126..1128>
 │           │       │   └╼ RHS
 │           │       │     └╼ Constant
-│           │       │       └╼ Integer -> Generic(25), <1040..1042>
+│           │       │       └╼ Integer -> Generic(25), <1132..1134>
 │           │       └╼ RHS
 │           │         └╼ Constant
-│           │           └╼ Integer -> Generic(0), <1046..1047>
+│           │           └╼ Integer -> Generic(0), <1138..1139>
 │           └╼ ElseExpression
 │             └╼ Constant
-│               └╼ Integer -> Generic(77), <1050..1052>
-├╼ FunctionDefinition <1059..1084>
+│               └╼ Integer -> Generic(77), <1142..1144>
+├╼ FunctionDefinition <1151..1176>
 │ ├╼ FunctionDeclaration
 │ │ ├╼ DeclarationSpecifiers
-│ │ │ ├╼ FunctionSpecifier -> Inline <1059..1065>
-│ │ │ └╼ TypeSpecifier -> Float <1066..1071>
+│ │ │ ├╼ FunctionSpecifier -> Inline <1151..1157>
+│ │ │ └╼ TypeSpecifier -> Float <1158..1163>
 │ │ └╼ FunctionDeclarator
-│ │   ├╼ Identifier -> "AdityaG" <1072..1079>
+│ │   ├╼ Identifier -> "AdityaG" <1164..1171>
 │ │   └╼ FunctionParameters
 │ │     └╼ Empty
 │ └╼ FunctionBody
 │   └╼ Empty
-├╼ Declaration <1085..1140>
+├╼ Declaration <1177..1232>
 │ ├╼ DeclarationSpecifiers
-│ │ ├╼ TypeQualifier -> Const <1085..1090>
-│ │ └╼ TypeSpecifier -> Int <1091..1094>
+│ │ ├╼ TypeQualifier -> Const <1177..1182>
+│ │ └╼ TypeSpecifier -> Int <1183..1186>
 │ └╼ InitDeclaratorList
 │   └╼ InitDeclarator
 │     └╼ FunctionDeclarator
-│       ├╼ Identifier -> "NiceFunction" <1095..1107>
+│       ├╼ Identifier -> "NiceFunction" <1187..1199>
 │       └╼ FunctionParameters
-│         ├╼ FunctionParameter <1108..1124>
+│         ├╼ FunctionParameter <1200..1216>
 │         │ ├╼ DeclarationSpecifiers
-│         │ │ ├╼ TypeQualifier -> Const <1108..1113>
-│         │ │ └╼ TypeSpecifier -> Int <1114..1117>
-│         │ └╼ DirectDeclarator -> "param1" <1118..1124>
-│         └╼ FunctionParameter <1126..1138>
+│         │ │ ├╼ TypeQualifier -> Const <1200..1205>
+│         │ │ └╼ TypeSpecifier -> Int <1206..1209>
+│         │ └╼ DirectDeclarator -> "param1" <1210..1216>
+│         └╼ FunctionParameter <1218..1230>
 │           ├╼ DeclarationSpecifiers
-│           │ └╼ TypeSpecifier -> Float <1126..1131>
-│           └╼ DirectDeclarator -> "param2" <1132..1138>
-└╼ Declaration <1141..1189>
+│           │ └╼ TypeSpecifier -> Float <1218..1223>
+│           └╼ DirectDeclarator -> "param2" <1224..1230>
+└╼ Declaration <1233..1281>
   ├╼ DeclarationSpecifiers
-  │ ├╼ TypeSpecifier -> Unsigned <1141..1149>
-  │ └╼ TypeSpecifier -> Int <1150..1153>
+  │ ├╼ TypeSpecifier -> Unsigned <1233..1241>
+  │ └╼ TypeSpecifier -> Int <1242..1245>
   └╼ InitDeclaratorList
     └╼ InitDeclarator
       └╼ FunctionDeclarator
-        ├╼ Identifier -> "GetSum" <1154..1160>
+        ├╼ Identifier -> "GetSum" <1246..1252>
         └╼ FunctionParameters
-          ├╼ FunctionParameter <1161..1174>
+          ├╼ FunctionParameter <1253..1266>
           │ ├╼ DeclarationSpecifiers
-          │ │ ├╼ TypeSpecifier -> Unsigned <1161..1169>
-          │ │ └╼ TypeSpecifier -> Int <1170..1173>
+          │ │ ├╼ TypeSpecifier -> Unsigned <1253..1261>
+          │ │ └╼ TypeSpecifier -> Int <1262..1265>
           │ └╼ DirectDeclarator -> None
-          └╼ FunctionParameter <1175..1188>
+          └╼ FunctionParameter <1267..1280>
             ├╼ DeclarationSpecifiers
-            │ ├╼ TypeSpecifier -> Unsigned <1175..1183>
-            │ └╼ TypeSpecifier -> Int <1184..1187>
+            │ ├╼ TypeSpecifier -> Unsigned <1267..1275>
+            │ └╼ TypeSpecifier -> Int <1276..1279>
             └╼ DirectDeclarator -> None
 ```
 

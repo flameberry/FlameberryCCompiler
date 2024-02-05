@@ -249,6 +249,7 @@ enum Statement {
     IfStatement(Box<IfStatement>),
     SwitchStatement(Box<SwitchStatement>),
     WhileStatement(Box<WhileStatement>),
+    DoWhileStatement(Box<DoWhileStatement>),
     GotoStatement,
     BreakStatement,
     ContinueStatement,
@@ -278,6 +279,12 @@ struct IfStatement {
 struct WhileStatement {
     expression: Node<Expression>,
     statement: Node<Statement>,
+}
+
+#[derive(Debug)]
+struct DoWhileStatement {
+    statement: Node<Statement>,
+    expression: Node<Expression>,
 }
 
 #[derive(Debug)]
@@ -460,6 +467,17 @@ fn display_statement(statement: &Statement, span: &Span) {
             {
                 add_branch!("WhileBlock");
                 display_statement(&while_stmt.statement.node, &while_stmt.statement.span);
+            }
+        }
+        Statement::DoWhileStatement(statement) => {
+            add_branch!("DoWhileStatement {}", span);
+            {
+                add_branch!("DoBlock");
+                display_statement(&statement.statement.node, &statement.statement.span);
+            }
+            {
+                add_branch!("DoWhileExpression");
+                display_expr(&statement.expression.node, &statement.expression.span);
             }
         }
         Statement::BreakStatement => add_leaf!("BreakStatement {}", span),
@@ -1254,7 +1272,6 @@ impl<'a> Parser<'a> {
                         span,
                     ))
                 }
-                TokenType::Keyword(Keyword::For | Keyword::Do) => todo!(),
                 TokenType::Keyword(Keyword::While) => {
                     // Accept a OpenParenthesis
                     self.accept_token(TokenType::OpenParenthesis)?;
@@ -1274,6 +1291,36 @@ impl<'a> Parser<'a> {
                         Statement::WhileStatement(Box::new(WhileStatement {
                             expression,
                             statement: block,
+                        })),
+                        span,
+                    ))
+                }
+                TokenType::Keyword(Keyword::Do) => {
+                    // iteration-statement:
+                    //      do statement while ( expression ) ;
+
+                    // Parse the do statement
+                    let dostmt = self.parse_statement()?;
+
+                    // Accept `while (`
+                    self.accept_token(TokenType::Keyword(Keyword::While))?;
+                    self.accept_token(TokenType::OpenParenthesis)?;
+                    // Parse the while expression
+                    let doexpr = self.parse_expr()?;
+                    // Accept `)`
+                    self.accept_token(TokenType::CloseParenthesis)?;
+                    // Accept `;`
+                    let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+
+                    // Calculate span of the entire while statement
+                    // Span of the while statement = Start of do keyword -> End of semicolon after `while` keyword
+                    let span = Span::new(start, semicolon_end);
+
+                    // Create and return the DoWhileStatement
+                    Ok(Node::new(
+                        Statement::DoWhileStatement(Box::new(DoWhileStatement {
+                            statement: dostmt,
+                            expression: doexpr,
                         })),
                         span,
                     ))
