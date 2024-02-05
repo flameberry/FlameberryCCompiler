@@ -247,6 +247,7 @@ enum Statement {
     CompoundStatement(Vec<Node<BlockItem>>),
     ExpressionStatement(Expression),
     IfStatement(Box<IfStatement>),
+    SwitchStatement(Box<SwitchStatement>),
     WhileStatement(Box<WhileStatement>),
     GotoStatement,
     BreakStatement,
@@ -257,6 +258,12 @@ enum Statement {
 #[derive(Debug)]
 struct CaseStatement {
     constexpr: Node<Expression>,
+    statement: Node<Statement>,
+}
+
+#[derive(Debug)]
+struct SwitchStatement {
+    expression: Node<Expression>,
     statement: Node<Statement>,
 }
 
@@ -431,6 +438,17 @@ fn display_statement(statement: &Statement, span: &Span) {
             if let Some(else_stmt) = &if_statement.else_block {
                 add_branch!("ElseStatement");
                 display_statement(&else_stmt.node, &else_stmt.span);
+            }
+        }
+        Statement::SwitchStatement(statement) => {
+            add_branch!("SwitchStatement {}", span);
+            {
+                add_branch!("SwitchExpression");
+                display_expr(&statement.expression.node, &statement.expression.span);
+            }
+            {
+                add_branch!("SwitchBlock");
+                display_statement(&statement.statement.node, &statement.statement.span);
             }
         }
         Statement::WhileStatement(while_stmt) => {
@@ -1209,6 +1227,31 @@ impl<'a> Parser<'a> {
                             else_block,
                         })),
                         stmt_span,
+                    ))
+                }
+                TokenType::Keyword(Keyword::Switch) => {
+                    // selection-statement:
+                    //      switch ( expression ) statement
+
+                    // Consume the OpenParenthesis
+                    self.accept_token(TokenType::OpenParenthesis)?;
+                    // Parse the Switch Expression
+                    let switchexpr = self.parse_expr()?;
+                    // Consume the CloseParenthesis
+                    self.accept_token(TokenType::CloseParenthesis)?;
+                    // Parse the switch block/statement
+                    let switchstmt = self.parse_statement()?;
+
+                    // Calculate span of the entire switch statement
+                    // Span of switch statement = (start of the switch keyword, end of the switch statement)
+                    let span = Span::new(start, switchstmt.span.end);
+                    // Create and return the switch statement
+                    Ok(Node::new(
+                        Statement::SwitchStatement(Box::new(SwitchStatement {
+                            expression: switchexpr,
+                            statement: switchstmt,
+                        })),
+                        span,
                     ))
                 }
                 TokenType::Keyword(Keyword::For | Keyword::Do) => todo!(),

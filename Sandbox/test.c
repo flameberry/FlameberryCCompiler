@@ -19,16 +19,19 @@ int main(void) {
     else
         // This is a comment to try and mess with the tokenizer :D
         return 0;
-    {
-        case 2 * 32: return g_GlobalVariable * g_NiceVar;
-        default: break;
-    }
+
     int i = 0;
     while (i < 10)
     {
         while (1)
             return 2;
         int j = i + 1;
+    }
+
+    switch (i * i + i)
+    {
+        case 2 * 32: return g_GlobalVariable * g_NiceVar;
+        default: break;
     }
     // This is a comment to try and mess with the tokenizer :D
     { return _g_AssumeABoolean ? 4 & 12 ^ 13 | 1 && 5 || (g_GlobalVariable + 2u << 2 & 31) * (((34l + _g_AssumeABoolean == g_NiceVar >> 3) * 34) * 4) * 23.6f - 45 >= 25 != 0 : 77; }
