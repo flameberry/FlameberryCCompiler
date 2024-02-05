@@ -242,7 +242,8 @@ enum BlockItem {
 
 #[derive(Debug)]
 enum Statement {
-    LabeledStatement,
+    CaseStatement(Box<CaseStatement>),
+    DefaultStatement(Box<Node<Statement>>),
     CompoundStatement(Vec<Node<BlockItem>>),
     ExpressionStatement(Expression),
     IfStatement(Box<IfStatement>),
@@ -251,6 +252,12 @@ enum Statement {
     BreakStatement,
     ContinueStatement,
     ReturnStatement(Node<Expression>),
+}
+
+#[derive(Debug)]
+struct CaseStatement {
+    constexpr: Node<Expression>,
+    statement: Node<Statement>,
 }
 
 #[derive(Debug)]
@@ -263,7 +270,7 @@ struct IfStatement {
 #[derive(Debug)]
 struct WhileStatement {
     expression: Node<Expression>,
-    block: Node<Statement>,
+    statement: Node<Statement>,
 }
 
 #[derive(Debug)]
@@ -372,6 +379,24 @@ fn display_expr(expression: &Expression, span: &Span) {
 
 fn display_statement(statement: &Statement, span: &Span) {
     match &statement {
+        Statement::CaseStatement(casestmt) => {
+            add_branch!("CaseStatement {}", span);
+            {
+                add_branch!("CaseExpression");
+                display_expr(&casestmt.constexpr.node, &casestmt.constexpr.span);
+            }
+            {
+                add_branch!("CaseBlock");
+                display_statement(&casestmt.statement.node, &casestmt.statement.span);
+            }
+        }
+        Statement::DefaultStatement(statement) => {
+            add_branch!("DefaultStatement {}", span);
+            {
+                add_branch!("DefaultBlock");
+                display_statement(&statement.node, &statement.span);
+            }
+        }
         Statement::ReturnStatement(expression) => {
             add_branch!("ReturnStatement {}", span);
             display_expr(&expression.node, span);
@@ -416,7 +441,7 @@ fn display_statement(statement: &Statement, span: &Span) {
             }
             {
                 add_branch!("WhileBlock");
-                display_statement(&while_stmt.block.node, &while_stmt.block.span);
+                display_statement(&while_stmt.statement.node, &while_stmt.statement.span);
             }
         }
         Statement::BreakStatement => add_leaf!("BreakStatement {}", span),
@@ -1092,9 +1117,48 @@ impl<'a> Parser<'a> {
     fn parse_statement(&mut self) -> Result<Node<Statement>, CompilerError> {
         match self.tokenizer.next_token()? {
             Some((token, start, _)) => match token {
-                TokenType::Keyword(Keyword::Case | Keyword::Default) => {
-                    // Labeled Statement
-                    todo!()
+                TokenType::Keyword(Keyword::Case) => {
+                    // labeled-statement:
+                    //      case constant-expression : statement
+
+                    let constexpr = self.parse_constant_expr()?;
+                    // Consume a colon
+                    self.accept_token(TokenType::Colon)?;
+                    // Parse a statement
+                    let casestmt = self.parse_statement()?;
+
+                    // Calculate the span of the case statement
+                    // Span = Start of the `case` keyword -> End of the case statement
+                    let span = Span::new(start, casestmt.span.end);
+
+                    // Create and return the Case Statement
+                    Ok(Node::new(
+                        Statement::CaseStatement(Box::new(CaseStatement {
+                            constexpr,
+                            statement: casestmt,
+                        })),
+                        span,
+                    ))
+                }
+                TokenType::Keyword(Keyword::Default) => {
+                    // labeled-statement:
+                    //      default : statement
+
+                    // Consume a colon
+                    self.accept_token(TokenType::Colon)?;
+
+                    // Parse a statement
+                    let defaultstmt = self.parse_statement()?;
+
+                    // Calculate the span of the default statement
+                    // Span = Start of the `default` keyword -> End of the default statement
+                    let span = Span::new(start, defaultstmt.span.end);
+
+                    // Create and return the Default Statement
+                    Ok(Node::new(
+                        Statement::DefaultStatement(Box::new(defaultstmt)),
+                        span,
+                    ))
                 }
                 TokenType::Keyword(Keyword::If) => {
                     // if (<expression>) <statement>
@@ -1164,7 +1228,10 @@ impl<'a> Parser<'a> {
                     let span = Span::new(start, block.span.end);
 
                     Ok(Node::new(
-                        Statement::WhileStatement(Box::new(WhileStatement { expression, block })),
+                        Statement::WhileStatement(Box::new(WhileStatement {
+                            expression,
+                            statement: block,
+                        })),
                         span,
                     ))
                 }
@@ -1334,6 +1401,14 @@ impl<'a> Parser<'a> {
         Ok(expression)
     }
 
+    /// This is a wrapper function which calls parse_conditional_expr() under the hood
+    /// As according to the C17 grammar a constant-expression is any conditional-expression (syntactically)
+    fn parse_constant_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        // constant-expression:
+        //      conditional-expression
+        self.parse_conditional_expr()
+    }
+
     /// Follows recursive pattern to parse the conditional expression grammar
     fn parse_conditional_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
         // conditional-expression:
@@ -1378,6 +1453,7 @@ impl<'a> Parser<'a> {
         }
     }
 
+    #[allow(non_snake_case)]
     fn parse_logical_OR_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
         // logical-OR-expression:
         //      logical-AND-expression
@@ -1420,6 +1496,7 @@ impl<'a> Parser<'a> {
         Ok(expression)
     }
 
+    #[allow(non_snake_case)]
     fn parse_logical_AND_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
         // logical-AND-expression:
         //      inclusive-OR-expression
@@ -1546,6 +1623,7 @@ impl<'a> Parser<'a> {
         Ok(expression)
     }
 
+    #[allow(non_snake_case)]
     fn parse_AND_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
         // AND-expression:
         //      equality-expression

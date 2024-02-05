@@ -19,7 +19,10 @@ int main(void) {
     else
         // This is a comment to try and mess with the tokenizer :D
         return 0;
-
+    {
+        case 2 * 32: return g_GlobalVariable * g_NiceVar;
+        default: break;
+    }
     int i = 0;
     while (i < 10)
     {
