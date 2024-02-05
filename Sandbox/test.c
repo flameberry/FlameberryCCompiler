@@ -35,6 +35,9 @@ int main(void) {
 
     2 * 2;
     ;
+    goto Checkpoint;
+
+Checkpoint: return 34;
 
     switch (i * i + i)
     {

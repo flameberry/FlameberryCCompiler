@@ -514,6 +514,10 @@ fn display_statement(statement: &Statement, span: &Span) {
         }
         Statement::BreakStatement => add_leaf!("BreakStatement {}", span),
         Statement::ContinueStatement => add_leaf!("ContinueStatement {}", span),
+        Statement::GotoStatement(identifier) => {
+            add_branch!("GotoStatement {}", span);
+            add_leaf!("Identifier -> \"{}\" {}", identifier.node, identifier.span);
+        }
         _ => todo!(),
     }
 }
@@ -1394,7 +1398,41 @@ impl<'a> Parser<'a> {
                             ))
                         }
                         Keyword::Goto => {
-                            todo!()
+                            // jump-statement:
+                            //      goto identifier ;
+
+                            // Force the next token to be an identifier
+                            match self.tokenizer.next_token()? {
+                                Some((TokenType::Identifier(identifier), id_start, id_end)) => {
+                                    // Accept a `;`
+                                    let (_, semicolon_end) =
+                                        self.accept_token(TokenType::Semicolon)?;
+
+                                    // Create and return a goto statement
+                                    Ok(Node::new(
+                                        Statement::GotoStatement(Node::new(
+                                            identifier,
+                                            Span::new(id_start, id_end),
+                                        )),
+                                        // Span of the entire goto statement = Start of goto keyword -> End of semicolon
+                                        Span::new(start, semicolon_end),
+                                    ))
+                                }
+                                // This case will occur when code is something like:
+                                // goto  ;
+                                //      ^^ Missing Identifier
+                                Some((_, start, _)) => Err(CompilerError {
+                                    kind: CompilerErrorKind::SyntaxError,
+                                    message: "Expected an identifier".to_string(),
+                                    location: Some(start),
+                                }),
+                                None => Err(CompilerError {
+                                    kind: CompilerErrorKind::SyntaxError,
+                                    message: "Expected an identifier, instead got end of file"
+                                        .to_string(),
+                                    location: None,
+                                }),
+                            }
                         }
                         _ => Err(CompilerError {
                             kind: CompilerErrorKind::SyntaxError,
