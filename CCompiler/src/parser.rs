@@ -617,9 +617,10 @@ fn keyword2declspec(keyword: &Keyword) -> Option<DeclarationSpecifier> {
         }
 
         // Type Qualifiers
-        Keyword::_Atomic => DeclarationSpecifier::TypeQualifier(TypeQualifier::Atomic),
         Keyword::Const => DeclarationSpecifier::TypeQualifier(TypeQualifier::Const),
+        Keyword::Restrict => DeclarationSpecifier::TypeQualifier(TypeQualifier::Restrict),
         Keyword::Volatile => DeclarationSpecifier::TypeQualifier(TypeQualifier::Volatile),
+        Keyword::_Atomic => DeclarationSpecifier::TypeQualifier(TypeQualifier::Atomic),
 
         // Type Specifiers
         Keyword::Void => DeclarationSpecifier::TypeSpecifier(TypeSpecifier::Void),
