@@ -569,7 +569,6 @@ fn display_statement(statement: &Statement, span: &Span) {
             add_branch!("GotoStatement {}", span);
             add_leaf!("Identifier -> \"{}\" {}", identifier.node, identifier.span);
         }
-        _ => todo!(),
     }
 }
 
@@ -1427,9 +1426,10 @@ impl<'a> Parser<'a> {
                                 let forinitializer: Node<ForInitializer>;
                                 match self.tokenizer.peek_token()? {
                                     Some((token, peek_start, _)) => {
+                                        // Check if the next token is a DeclarationSpecifier
                                         if let TokenType::Keyword(keyword) = token {
                                             if let Some(_) = keyword2declspec(&keyword) {
-                                                // Expect a ForInitializer::Declaration
+                                                // If yes, Expect a ForInitializer::Declaration
                                                 let declaration = self.parse_declaration()?;
 
                                                 // Accept a `;`
@@ -1453,27 +1453,43 @@ impl<'a> Parser<'a> {
                                                 });
                                             }
                                         } else if token == TokenType::Semicolon {
+                                            // Consume the first semicolon which follows the ForInitializer
+                                            self.tokenizer.next_token()?;
+
+                                            // Else if the next token is a Semicolon, then return an Empty Initializer
                                             forinitializer = Node::new(
                                                 ForInitializer::Empty,
                                                 Span::new(peek_start, peek_start),
                                             );
                                         } else {
-                                            // Expect an ForInitializer::Expression
+                                            // Else expect an expression (like an assignment expression)
                                             let expression = self.parse_expr()?;
+
+                                            // Accept a `;`
+                                            let (_, semicolon_end) =
+                                                self.accept_token(TokenType::Semicolon)?;
+
+                                            // Calculate the span of the ForInitializer
+                                            // Span = Start of expression -> End of the semicolon
+                                            let span =
+                                                Span::new(expression.span.start, semicolon_end);
+
+                                            // Create and store the ForInitializer
                                             forinitializer = Node::new(
                                                 ForInitializer::Expression(expression.node),
-                                                expression.span,
+                                                span,
                                             );
                                         }
                                     }
                                     None => {
+                                        // This error should occur when we encounter an end of file instead of an initializer
                                         return Err(CompilerError {
                                             kind: CompilerErrorKind::SyntaxError,
                                             message:
-                                                "Expected a for expression, instead got end of file"
+                                                "Expected a for initializer, instead got end of file"
                                                     .to_string(),
                                             location: None,
-                                        })
+                                        });
                                     }
                                 }
 
@@ -1481,8 +1497,10 @@ impl<'a> Parser<'a> {
                                 let condition = if let Some((TokenType::Semicolon, _, _)) =
                                     self.tokenizer.peek_token()?
                                 {
+                                    // If the next token is semicolon then the condition is None
                                     None
                                 } else {
+                                    // Else parse the condition expression
                                     Some(self.parse_expr()?)
                                 };
 
@@ -1493,8 +1511,10 @@ impl<'a> Parser<'a> {
                                 let step = if let Some((TokenType::CloseParenthesis, _, _)) =
                                     self.tokenizer.peek_token()?
                                 {
+                                    // If the next token is `)` then the step expression is None
                                     None
                                 } else {
+                                    // Else parse the step expression
                                     Some(self.parse_expr()?)
                                 };
 
@@ -1508,6 +1528,7 @@ impl<'a> Parser<'a> {
                                 // Span = Start of the `for` keyword -> End of the statement
                                 let span = Span::new(start, statement.span.end);
 
+                                // Create and return the actual For Statement
                                 Ok(Node::new(
                                     Statement::ForStatement(Box::new(ForStatement {
                                         initializer: forinitializer,
@@ -1526,7 +1547,7 @@ impl<'a> Parser<'a> {
                                 // Calculate span of the entire return statement
                                 // Span of return statement = (start of the return keyword, end of the semicolon token)
                                 let span = Span::new(start, semicolon_end);
-                                // Create and store the actual return statement
+                                // Create and return the actual return statement
                                 Ok(Node::new(Statement::ReturnStatement(expression), span))
                             }
                             Keyword::Break => {

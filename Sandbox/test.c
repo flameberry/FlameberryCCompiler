@@ -35,7 +35,7 @@ int main(void) {
 
     for (int i = 0; i < 12; i - 1)
     {
-        for (int j = 2; i > 0; i + 4)
+        for (;;)
             continue;
 
         int counter = 45;
