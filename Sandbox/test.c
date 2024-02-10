@@ -33,6 +33,15 @@ int main(void) {
         int j = i + 1;
     }
 
+    for (int i = 0; i < 12; i - 1)
+    {
+        for (int j = 2; i > 0; i + 4)
+            continue;
+
+        int counter = 45;
+        return 20 * counter;
+    }
+
     2 * 2;
     ;
     goto Checkpoint;

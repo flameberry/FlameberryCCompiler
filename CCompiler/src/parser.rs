@@ -251,6 +251,7 @@ enum Statement {
     SwitchStatement(Box<SwitchStatement>),
     WhileStatement(Box<WhileStatement>),
     DoWhileStatement(Box<DoWhileStatement>),
+    ForStatement(Box<ForStatement>),
     BreakStatement,
     ContinueStatement,
     ReturnStatement(Node<Expression>),
@@ -292,6 +293,21 @@ struct WhileStatement {
 struct DoWhileStatement {
     statement: Node<Statement>,
     expression: Node<Expression>,
+}
+
+#[derive(Debug)]
+struct ForStatement {
+    initializer: Node<ForInitializer>,
+    condition: Option<Node<Expression>>,
+    step: Option<Node<Expression>>,
+    statement: Node<Statement>,
+}
+
+#[derive(Debug)]
+enum ForInitializer {
+    Empty,
+    Expression(Expression),
+    Declaration(Declaration),
 }
 
 #[derive(Debug)]
@@ -510,6 +526,41 @@ fn display_statement(statement: &Statement, span: &Span) {
             {
                 add_branch!("DoWhileExpression");
                 display_expr(&statement.expression.node, &statement.expression.span);
+            }
+        }
+        Statement::ForStatement(statement) => {
+            add_branch!("ForStatement {}", span);
+            {
+                add_branch!("ForInitializer");
+                match &statement.initializer.node {
+                    ForInitializer::Empty => add_leaf!("Empty"),
+                    ForInitializer::Declaration(decl) => {
+                        display_declaration(&decl, &statement.initializer.span)
+                    }
+                    ForInitializer::Expression(expression) => {
+                        display_expr(&expression, &statement.initializer.span);
+                    }
+                }
+            }
+            {
+                add_branch!("ForCondition");
+                if let Some(condition) = &statement.condition {
+                    display_expr(&condition.node, &condition.span);
+                } else {
+                    add_leaf!("Empty");
+                }
+            }
+            {
+                add_branch!("ForStepExpression");
+                if let Some(step) = &statement.step {
+                    display_expr(&step.node, &step.span);
+                } else {
+                    add_leaf!("Empty");
+                }
+            }
+            {
+                add_branch!("ForBlock");
+                display_statement(&statement.statement.node, &statement.statement.span);
             }
         }
         Statement::BreakStatement => add_leaf!("BreakStatement {}", span),
@@ -1189,346 +1240,446 @@ impl<'a> Parser<'a> {
 
     fn parse_statement(&mut self) -> Result<Node<Statement>, CompilerError> {
         match self.tokenizer.peek_token()? {
-            Some((token, start, end)) => match token {
-                TokenType::Keyword(keyword) => {
-                    // Consume the next token in case of all keywords
-                    self.tokenizer.next_token()?;
+            Some((token, start, end)) => {
+                match token {
+                    TokenType::Keyword(keyword) => {
+                        // Consume the next token in case of all keywords
+                        self.tokenizer.next_token()?;
 
-                    // Parse the statements starting with keywords
-                    match keyword {
-                        Keyword::Case => {
-                            // labeled-statement:
-                            //      case constant-expression : statement
+                        // Parse the statements starting with keywords
+                        match keyword {
+                            Keyword::Case => {
+                                // labeled-statement:
+                                //      case constant-expression : statement
 
-                            let constexpr = self.parse_constant_expr()?;
-                            // Consume a colon
-                            self.accept_token(TokenType::Colon)?;
-                            // Parse a statement
-                            let casestmt = self.parse_statement()?;
+                                let constexpr = self.parse_constant_expr()?;
+                                // Consume a colon
+                                self.accept_token(TokenType::Colon)?;
+                                // Parse a statement
+                                let casestmt = self.parse_statement()?;
 
-                            // Calculate the span of the case statement
-                            // Span = Start of the `case` keyword -> End of the case statement
-                            let span = Span::new(start, casestmt.span.end);
+                                // Calculate the span of the case statement
+                                // Span = Start of the `case` keyword -> End of the case statement
+                                let span = Span::new(start, casestmt.span.end);
 
-                            // Create and return the Case Statement
-                            Ok(Node::new(
-                                Statement::CaseStatement(Box::new(CaseStatement {
-                                    constexpr,
-                                    statement: casestmt,
-                                })),
-                                span,
-                            ))
-                        }
-                        Keyword::Default => {
-                            // labeled-statement:
-                            //      default : statement
-
-                            // Consume a colon
-                            self.accept_token(TokenType::Colon)?;
-
-                            // Parse a statement
-                            let defaultstmt = self.parse_statement()?;
-
-                            // Calculate the span of the default statement
-                            // Span = Start of the `default` keyword -> End of the default statement
-                            let span = Span::new(start, defaultstmt.span.end);
-
-                            // Create and return the Default Statement
-                            Ok(Node::new(
-                                Statement::DefaultStatement(Box::new(defaultstmt)),
-                                span,
-                            ))
-                        }
-                        Keyword::If => {
-                            // if (<expression>) <statement>
-                            //    ^ Accept this OpenParenthesis
-                            self.accept_token(TokenType::OpenParenthesis)?;
-
-                            // if (<expression>) <statement>
-                            //      ^^^ Parse this expression
-                            let if_expr = self.parse_expr()?;
-
-                            // if (<expression>) <statement>
-                            //                 ^ Accept this CloseParenthesis
-                            self.accept_token(TokenType::CloseParenthesis)?;
-
-                            // if (<expression>) <statement>
-                            //                    ^^^ Parse this statement
-                            let if_block = self.parse_statement()?;
-
-                            let else_block;
-                            let stmt_span;
-
-                            // Check for an else statement and parse it
-                            // Also calculate the span for the entire if statement
-                            if let Some((TokenType::Keyword(Keyword::Else), _, _)) =
-                                self.tokenizer.peek_token()?
-                            {
-                                // Consume the Else Token once it is confirmed that it is really an Else Token
-                                self.tokenizer.next_token()?;
-                                // Parse the else statement
-                                let else_stmt = self.parse_statement()?;
-                                // The span of the entire if statement =
-                                // Start of if keyword -> End of else statement
-                                stmt_span = Span::new(start, else_stmt.span.end);
-                                else_block = Some(else_stmt);
-                            } else {
-                                // There is no else statement
-                                else_block = None;
-                                // The span of the entire if statement =
-                                // Start of if keyword -> End of if statement
-                                stmt_span = Span::new(start, if_block.span.end);
+                                // Create and return the Case Statement
+                                Ok(Node::new(
+                                    Statement::CaseStatement(Box::new(CaseStatement {
+                                        constexpr,
+                                        statement: casestmt,
+                                    })),
+                                    span,
+                                ))
                             }
+                            Keyword::Default => {
+                                // labeled-statement:
+                                //      default : statement
 
-                            // Create and return the If statement
-                            Ok(Node::new(
-                                Statement::IfStatement(Box::new(IfStatement {
-                                    expression: if_expr,
-                                    if_block,
-                                    else_block,
-                                })),
-                                stmt_span,
-                            ))
-                        }
-                        Keyword::Switch => {
-                            // selection-statement:
-                            //      switch ( expression ) statement
+                                // Consume a colon
+                                self.accept_token(TokenType::Colon)?;
 
-                            // Consume the OpenParenthesis
-                            self.accept_token(TokenType::OpenParenthesis)?;
-                            // Parse the Switch Expression
-                            let switchexpr = self.parse_expr()?;
-                            // Consume the CloseParenthesis
-                            self.accept_token(TokenType::CloseParenthesis)?;
-                            // Parse the switch block/statement
-                            let switchstmt = self.parse_statement()?;
+                                // Parse a statement
+                                let defaultstmt = self.parse_statement()?;
 
-                            // Calculate span of the entire switch statement
-                            // Span of switch statement = (start of the switch keyword, end of the switch statement)
-                            let span = Span::new(start, switchstmt.span.end);
-                            // Create and return the switch statement
-                            Ok(Node::new(
-                                Statement::SwitchStatement(Box::new(SwitchStatement {
-                                    expression: switchexpr,
-                                    statement: switchstmt,
-                                })),
-                                span,
-                            ))
-                        }
-                        Keyword::While => {
-                            // Accept a OpenParenthesis
-                            self.accept_token(TokenType::OpenParenthesis)?;
-                            // Parse the condition inside the while (<expression>) statement
-                            //                                       ^^^
-                            let expression = self.parse_expr()?;
-                            // Accept a CloseParenthesis
-                            self.accept_token(TokenType::CloseParenthesis)?;
-                            // Parse the while statement
-                            let block = self.parse_statement()?;
+                                // Calculate the span of the default statement
+                                // Span = Start of the `default` keyword -> End of the default statement
+                                let span = Span::new(start, defaultstmt.span.end);
 
-                            // Calculate the span of the while statement
-                            // Span = Start of the `while` keyword -> End of the statement
-                            let span = Span::new(start, block.span.end);
+                                // Create and return the Default Statement
+                                Ok(Node::new(
+                                    Statement::DefaultStatement(Box::new(defaultstmt)),
+                                    span,
+                                ))
+                            }
+                            Keyword::If => {
+                                // if (<expression>) <statement>
+                                //    ^ Accept this OpenParenthesis
+                                self.accept_token(TokenType::OpenParenthesis)?;
 
-                            Ok(Node::new(
-                                Statement::WhileStatement(Box::new(WhileStatement {
-                                    expression,
-                                    statement: block,
-                                })),
-                                span,
-                            ))
-                        }
-                        Keyword::Do => {
-                            // iteration-statement:
-                            //      do statement while ( expression ) ;
+                                // if (<expression>) <statement>
+                                //      ^^^ Parse this expression
+                                let if_expr = self.parse_expr()?;
 
-                            // Parse the do statement
-                            let dostmt = self.parse_statement()?;
+                                // if (<expression>) <statement>
+                                //                 ^ Accept this CloseParenthesis
+                                self.accept_token(TokenType::CloseParenthesis)?;
 
-                            // Accept `while (`
-                            self.accept_token(TokenType::Keyword(Keyword::While))?;
-                            self.accept_token(TokenType::OpenParenthesis)?;
-                            // Parse the while expression
-                            let doexpr = self.parse_expr()?;
-                            // Accept `)`
-                            self.accept_token(TokenType::CloseParenthesis)?;
-                            // Accept `;`
-                            let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+                                // if (<expression>) <statement>
+                                //                    ^^^ Parse this statement
+                                let if_block = self.parse_statement()?;
 
-                            // Calculate span of the entire while statement
-                            // Span of the while statement = Start of do keyword -> End of semicolon after `while` keyword
-                            let span = Span::new(start, semicolon_end);
+                                let else_block;
+                                let stmt_span;
 
-                            // Create and return the DoWhileStatement
-                            Ok(Node::new(
-                                Statement::DoWhileStatement(Box::new(DoWhileStatement {
-                                    statement: dostmt,
-                                    expression: doexpr,
-                                })),
-                                span,
-                            ))
-                        }
-                        Keyword::Return => {
-                            // Return -> Jump Statement
-                            let expression = self.parse_expr()?;
-                            let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
-
-                            // Calculate span of the entire return statement
-                            // Span of return statement = (start of the return keyword, end of the semicolon token)
-                            let span = Span::new(start, semicolon_end);
-                            // Create and store the actual return statement
-                            Ok(Node::new(Statement::ReturnStatement(expression), span))
-                        }
-                        Keyword::Break => {
-                            // Accept a semicolon
-                            let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
-                            // Create and return a Break Statement
-                            Ok(Node::new(
-                                Statement::BreakStatement,
-                                Span::new(start, semicolon_end),
-                            ))
-                        }
-                        Keyword::Continue => {
-                            // Accept a semicolon
-                            let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
-                            // Create and return a Continue Statement
-                            Ok(Node::new(
-                                Statement::ContinueStatement,
-                                Span::new(start, semicolon_end),
-                            ))
-                        }
-                        Keyword::Goto => {
-                            // jump-statement:
-                            //      goto identifier ;
-
-                            // Force the next token to be an identifier
-                            match self.tokenizer.next_token()? {
-                                Some((TokenType::Identifier(identifier), id_start, id_end)) => {
-                                    // Accept a `;`
-                                    let (_, semicolon_end) =
-                                        self.accept_token(TokenType::Semicolon)?;
-
-                                    // Create and return a goto statement
-                                    Ok(Node::new(
-                                        Statement::GotoStatement(Node::new(
-                                            identifier,
-                                            Span::new(id_start, id_end),
-                                        )),
-                                        // Span of the entire goto statement = Start of goto keyword -> End of semicolon
-                                        Span::new(start, semicolon_end),
-                                    ))
+                                // Check for an else statement and parse it
+                                // Also calculate the span for the entire if statement
+                                if let Some((TokenType::Keyword(Keyword::Else), _, _)) =
+                                    self.tokenizer.peek_token()?
+                                {
+                                    // Consume the Else Token once it is confirmed that it is really an Else Token
+                                    self.tokenizer.next_token()?;
+                                    // Parse the else statement
+                                    let else_stmt = self.parse_statement()?;
+                                    // The span of the entire if statement =
+                                    // Start of if keyword -> End of else statement
+                                    stmt_span = Span::new(start, else_stmt.span.end);
+                                    else_block = Some(else_stmt);
+                                } else {
+                                    // There is no else statement
+                                    else_block = None;
+                                    // The span of the entire if statement =
+                                    // Start of if keyword -> End of if statement
+                                    stmt_span = Span::new(start, if_block.span.end);
                                 }
-                                // This case will occur when code is something like:
-                                // goto  ;
-                                //      ^^ Missing Identifier
-                                Some((_, start, _)) => Err(CompilerError {
-                                    kind: CompilerErrorKind::SyntaxError,
-                                    message: "Expected an identifier".to_string(),
-                                    location: Some(start),
-                                }),
-                                None => Err(CompilerError {
-                                    kind: CompilerErrorKind::SyntaxError,
-                                    message: "Expected an identifier, instead got end of file"
-                                        .to_string(),
-                                    location: None,
-                                }),
+
+                                // Create and return the If statement
+                                Ok(Node::new(
+                                    Statement::IfStatement(Box::new(IfStatement {
+                                        expression: if_expr,
+                                        if_block,
+                                        else_block,
+                                    })),
+                                    stmt_span,
+                                ))
+                            }
+                            Keyword::Switch => {
+                                // selection-statement:
+                                //      switch ( expression ) statement
+
+                                // Consume the OpenParenthesis
+                                self.accept_token(TokenType::OpenParenthesis)?;
+                                // Parse the Switch Expression
+                                let switchexpr = self.parse_expr()?;
+                                // Consume the CloseParenthesis
+                                self.accept_token(TokenType::CloseParenthesis)?;
+                                // Parse the switch block/statement
+                                let switchstmt = self.parse_statement()?;
+
+                                // Calculate span of the entire switch statement
+                                // Span of switch statement = (start of the switch keyword, end of the switch statement)
+                                let span = Span::new(start, switchstmt.span.end);
+                                // Create and return the switch statement
+                                Ok(Node::new(
+                                    Statement::SwitchStatement(Box::new(SwitchStatement {
+                                        expression: switchexpr,
+                                        statement: switchstmt,
+                                    })),
+                                    span,
+                                ))
+                            }
+                            Keyword::While => {
+                                // Accept a OpenParenthesis
+                                self.accept_token(TokenType::OpenParenthesis)?;
+                                // Parse the condition inside the while (<expression>) statement
+                                //                                       ^^^
+                                let expression = self.parse_expr()?;
+                                // Accept a CloseParenthesis
+                                self.accept_token(TokenType::CloseParenthesis)?;
+                                // Parse the while statement
+                                let block = self.parse_statement()?;
+
+                                // Calculate the span of the while statement
+                                // Span = Start of the `while` keyword -> End of the statement
+                                let span = Span::new(start, block.span.end);
+
+                                Ok(Node::new(
+                                    Statement::WhileStatement(Box::new(WhileStatement {
+                                        expression,
+                                        statement: block,
+                                    })),
+                                    span,
+                                ))
+                            }
+                            Keyword::Do => {
+                                // iteration-statement:
+                                //      do statement while ( expression ) ;
+
+                                // Parse the do statement
+                                let dostmt = self.parse_statement()?;
+
+                                // Accept `while (`
+                                self.accept_token(TokenType::Keyword(Keyword::While))?;
+                                self.accept_token(TokenType::OpenParenthesis)?;
+                                // Parse the while expression
+                                let doexpr = self.parse_expr()?;
+                                // Accept `)`
+                                self.accept_token(TokenType::CloseParenthesis)?;
+                                // Accept `;`
+                                let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+
+                                // Calculate span of the entire while statement
+                                // Span of the while statement = Start of do keyword -> End of semicolon after `while` keyword
+                                let span = Span::new(start, semicolon_end);
+
+                                // Create and return the DoWhileStatement
+                                Ok(Node::new(
+                                    Statement::DoWhileStatement(Box::new(DoWhileStatement {
+                                        statement: dostmt,
+                                        expression: doexpr,
+                                    })),
+                                    span,
+                                ))
+                            }
+                            Keyword::For => {
+                                // Accept `(`
+                                self.accept_token(TokenType::OpenParenthesis)?;
+
+                                let forinitializer: Node<ForInitializer>;
+                                match self.tokenizer.peek_token()? {
+                                    Some((token, peek_start, _)) => {
+                                        if let TokenType::Keyword(keyword) = token {
+                                            if let Some(_) = keyword2declspec(&keyword) {
+                                                // Expect a ForInitializer::Declaration
+                                                let declaration = self.parse_declaration()?;
+
+                                                // Accept a `;`
+                                                let (_, semicolon_end) =
+                                                    self.accept_token(TokenType::Semicolon)?;
+
+                                                let forinit =
+                                                    ForInitializer::Declaration(declaration);
+                                                let forinit_span =
+                                                    Span::new(peek_start, semicolon_end);
+
+                                                forinitializer = Node::new(forinit, forinit_span);
+                                            } else {
+                                                // This must happen when code may have something like:
+                                                // for (return; i = 0; i++)
+                                                //      ^^ Unexpected keyword which is not a DeclarationSpecifier
+                                                return Err(CompilerError {
+                                                    kind: CompilerErrorKind::SyntaxError,
+                                                    message: format!("Expected a declaration specifier or an expression, instead got unexpected Keyword: {:?}", keyword),
+                                                    location: Some(peek_start)
+                                                });
+                                            }
+                                        } else if token == TokenType::Semicolon {
+                                            forinitializer = Node::new(
+                                                ForInitializer::Empty,
+                                                Span::new(peek_start, peek_start),
+                                            );
+                                        } else {
+                                            // Expect an ForInitializer::Expression
+                                            let expression = self.parse_expr()?;
+                                            forinitializer = Node::new(
+                                                ForInitializer::Expression(expression.node),
+                                                expression.span,
+                                            );
+                                        }
+                                    }
+                                    None => {
+                                        return Err(CompilerError {
+                                            kind: CompilerErrorKind::SyntaxError,
+                                            message:
+                                                "Expected a for expression, instead got end of file"
+                                                    .to_string(),
+                                            location: None,
+                                        })
+                                    }
+                                }
+
+                                // Parse the For Condition
+                                let condition = if let Some((TokenType::Semicolon, _, _)) =
+                                    self.tokenizer.peek_token()?
+                                {
+                                    None
+                                } else {
+                                    Some(self.parse_expr()?)
+                                };
+
+                                // Accept a semicolon irrespective of the presence of a for condition
+                                self.accept_token(TokenType::Semicolon)?;
+
+                                // Parse the For Step Expression
+                                let step = if let Some((TokenType::CloseParenthesis, _, _)) =
+                                    self.tokenizer.peek_token()?
+                                {
+                                    None
+                                } else {
+                                    Some(self.parse_expr()?)
+                                };
+
+                                // Accept a `)`
+                                self.accept_token(TokenType::CloseParenthesis)?;
+
+                                // Parse the actual for statement
+                                let statement = self.parse_statement()?;
+
+                                // Calculate the span of the entire ForStatement
+                                // Span = Start of the `for` keyword -> End of the statement
+                                let span = Span::new(start, statement.span.end);
+
+                                Ok(Node::new(
+                                    Statement::ForStatement(Box::new(ForStatement {
+                                        initializer: forinitializer,
+                                        condition,
+                                        step,
+                                        statement,
+                                    })),
+                                    span,
+                                ))
+                            }
+                            Keyword::Return => {
+                                // Return -> Jump Statement
+                                let expression = self.parse_expr()?;
+                                let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+
+                                // Calculate span of the entire return statement
+                                // Span of return statement = (start of the return keyword, end of the semicolon token)
+                                let span = Span::new(start, semicolon_end);
+                                // Create and store the actual return statement
+                                Ok(Node::new(Statement::ReturnStatement(expression), span))
+                            }
+                            Keyword::Break => {
+                                // Accept a semicolon
+                                let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+                                // Create and return a Break Statement
+                                Ok(Node::new(
+                                    Statement::BreakStatement,
+                                    Span::new(start, semicolon_end),
+                                ))
+                            }
+                            Keyword::Continue => {
+                                // Accept a semicolon
+                                let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+                                // Create and return a Continue Statement
+                                Ok(Node::new(
+                                    Statement::ContinueStatement,
+                                    Span::new(start, semicolon_end),
+                                ))
+                            }
+                            Keyword::Goto => {
+                                // jump-statement:
+                                //      goto identifier ;
+
+                                // Force the next token to be an identifier
+                                match self.tokenizer.next_token()? {
+                                    Some((TokenType::Identifier(identifier), id_start, id_end)) => {
+                                        // Accept a `;`
+                                        let (_, semicolon_end) =
+                                            self.accept_token(TokenType::Semicolon)?;
+
+                                        // Create and return a goto statement
+                                        Ok(Node::new(
+                                            Statement::GotoStatement(Node::new(
+                                                identifier,
+                                                Span::new(id_start, id_end),
+                                            )),
+                                            // Span of the entire goto statement = Start of goto keyword -> End of semicolon
+                                            Span::new(start, semicolon_end),
+                                        ))
+                                    }
+                                    // This case will occur when code is something like:
+                                    // goto  ;
+                                    //      ^^ Missing Identifier
+                                    Some((_, start, _)) => Err(CompilerError {
+                                        kind: CompilerErrorKind::SyntaxError,
+                                        message: "Expected an identifier".to_string(),
+                                        location: Some(start),
+                                    }),
+                                    None => Err(CompilerError {
+                                        kind: CompilerErrorKind::SyntaxError,
+                                        message: "Expected an identifier, instead got end of file"
+                                            .to_string(),
+                                        location: None,
+                                    }),
+                                }
+                            }
+                            _ => Err(CompilerError {
+                                kind: CompilerErrorKind::SyntaxError,
+                                message: format!(
+                                    "Unexpected start of a statement with keyword: {:?}",
+                                    keyword
+                                ),
+                                location: Some(start),
+                            }),
+                        }
+                    }
+                    TokenType::Identifier(identifier) => {
+                        // Either it can be a labeled statement
+                        // Or an expression statement
+                        // In both cases we can parse it as an expression
+                        let expression = self.parse_expr()?;
+
+                        // Then decide the type of the statement
+                        // Based on whether the expression is just an identifier or not
+                        if let Expression::Identifier(_) = &expression.node {
+                            if let Some((TokenType::Colon, _, _)) = self.tokenizer.peek_token()? {
+                                // labeled-statement:
+                                //      identifier : statement
+                                self.tokenizer.next_token()?;
+
+                                // Parse the labeled statement
+                                let statement = self.parse_statement()?;
+
+                                // Calculate the span of the entire labeled statement
+                                // Span = Start of the identifier -> End of the statement
+                                let span = Span::new(start, statement.span.end);
+
+                                return Ok(Node::new(
+                                    Statement::LabeledStatement(Box::new(LabeledStatement {
+                                        identifier: Node::new(identifier, Span::new(start, end)),
+                                        statement,
+                                    })),
+                                    span,
+                                ));
                             }
                         }
-                        _ => Err(CompilerError {
-                            kind: CompilerErrorKind::SyntaxError,
-                            message: format!(
-                                "Unexpected start of a statement with keyword: {:?}",
-                                keyword
-                            ),
-                            location: Some(start),
-                        }),
+                        // Else the statement is an expression-statement with grammar:
+                        //      expression-statement:
+                        //           expressionopt ;
+
+                        // Accept `;`
+                        let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+
+                        // Calculate the span of the entire expression statement
+                        // Span = Start of the expression -> End of the semicolon
+                        let span = Span::new(start, semicolon_end);
+                        return Ok(Node::new(
+                            Statement::ExpressionStatement(Some(expression)),
+                            span,
+                        ));
+                    }
+                    TokenType::OpenBrace => {
+                        // Consume the OpenBrace
+                        self.tokenizer.next_token()?;
+                        // Parse a compound statement
+                        let compound_stmt = self.parse_compound_stmt()?;
+                        // Accept a closing brace
+                        self.accept_token(TokenType::CloseBrace)?;
+                        // Return the parsed compound statement
+                        Ok(Node::new(compound_stmt.node, compound_stmt.span))
+                    }
+                    TokenType::Semicolon => {
+                        // Consume the semicolon
+                        self.tokenizer.next_token()?;
+
+                        // If the statement starts with a semicolon then we store it as an empty expression statement
+                        // The span of this statement will be the (start, end) of the semicolon token
+                        Ok(Node::new(
+                            Statement::ExpressionStatement(None),
+                            Span::new(start, end),
+                        ))
+                    }
+                    _ => {
+                        // expression-statement:
+                        //      expressionopt ;
+
+                        // If no specific token is encountered then we expect an expression statement
+                        let expression = self.parse_expr()?;
+
+                        // Accept `;`
+                        let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+
+                        // Calculate the span of the entire expression statement
+                        // Span = Start of the expression -> End of the semicolon
+                        let span = Span::new(start, semicolon_end);
+                        return Ok(Node::new(
+                            Statement::ExpressionStatement(Some(expression)),
+                            span,
+                        ));
                     }
                 }
-                TokenType::Identifier(identifier) => {
-                    // Either it can be a labeled statement
-                    // Or an expression statement
-                    // In both cases we can parse it as an expression
-                    let expression = self.parse_expr()?;
-
-                    // Then decide the type of the statement
-                    // Based on whether the expression is just an identifier or not
-                    if let Expression::Identifier(_) = &expression.node {
-                        if let Some((TokenType::Colon, _, _)) = self.tokenizer.peek_token()? {
-                            // labeled-statement:
-                            //      identifier : statement
-                            self.tokenizer.next_token()?;
-
-                            // Parse the labeled statement
-                            let statement = self.parse_statement()?;
-
-                            // Calculate the span of the entire labeled statement
-                            // Span = Start of the identifier -> End of the statement
-                            let span = Span::new(start, statement.span.end);
-
-                            return Ok(Node::new(
-                                Statement::LabeledStatement(Box::new(LabeledStatement {
-                                    identifier: Node::new(identifier, Span::new(start, end)),
-                                    statement,
-                                })),
-                                span,
-                            ));
-                        }
-                    }
-                    // Else the statement is an expression-statement with grammar:
-                    //      expression-statement:
-                    //           expressionopt ;
-
-                    // Accept `;`
-                    let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
-
-                    // Calculate the span of the entire expression statement
-                    // Span = Start of the expression -> End of the semicolon
-                    let span = Span::new(start, semicolon_end);
-                    return Ok(Node::new(
-                        Statement::ExpressionStatement(Some(expression)),
-                        span,
-                    ));
-                }
-                TokenType::OpenBrace => {
-                    // Consume the OpenBrace
-                    self.tokenizer.next_token()?;
-                    // Parse a compound statement
-                    let compound_stmt = self.parse_compound_stmt()?;
-                    // Accept a closing brace
-                    self.accept_token(TokenType::CloseBrace)?;
-                    // Return the parsed compound statement
-                    Ok(Node::new(compound_stmt.node, compound_stmt.span))
-                }
-                TokenType::Semicolon => {
-                    // Consume the semicolon
-                    self.tokenizer.next_token()?;
-
-                    // If the statement starts with a semicolon then we store it as an empty expression statement
-                    // The span of this statement will be the (start, end) of the semicolon token
-                    Ok(Node::new(
-                        Statement::ExpressionStatement(None),
-                        Span::new(start, end),
-                    ))
-                }
-                _ => {
-                    // expression-statement:
-                    //      expressionopt ;
-
-                    // If no specific token is encountered then we expect an expression statement
-                    let expression = self.parse_expr()?;
-
-                    // Accept `;`
-                    let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
-
-                    // Calculate the span of the entire expression statement
-                    // Span = Start of the expression -> End of the semicolon
-                    let span = Span::new(start, semicolon_end);
-                    return Ok(Node::new(
-                        Statement::ExpressionStatement(Some(expression)),
-                        span,
-                    ));
-                }
-            },
+            }
             _ => todo!(),
         }
     }
