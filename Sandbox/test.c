@@ -22,6 +22,7 @@ int main(void) {
 
 
   int i = 0;
+  sizeof(sizeof(2));
   sizeof(((5 * 3)));
   sizeof((((i))))++;
   while (i < 10)
