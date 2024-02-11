@@ -2589,7 +2589,6 @@ impl<'a> Parser<'a> {
                     ))
                 }
                 TokenType::Keyword(Keyword::Sizeof) => {
-                    // Differentiating between SizeofVal and SizeofType is a bit complicated
                     // Consume the Sizeof Keyword
                     self.tokenizer.next_token()?;
 
@@ -2621,6 +2620,15 @@ impl<'a> Parser<'a> {
                         }
                         // Else If the token is not a specifier-qualifier keyword
                         // Then parse an expression
+
+                        // In case of an expression, there need not be Parenthesis enclosing the expression
+                        // But in the current line of code we already have ensured a presence of OpenParenthesis
+                        // So that OpenParenthesis becomes a part of the expression and not a part of the sizeof operator
+                        // In the unary-expression inside sizeof operator we have to ensure somehow that the postfix operators get noticed
+                        // This is because we consume the first OpenParenthesis before calling `parse_expr()`
+                        // As a result after parsing an expression we also check for postfix operators
+                        // Also we won't check for any other operators like +, -, *, /, %, &&, ==, etc. because they don't come under unary expressions
+
                         let mut expression = self.parse_expr()?;
                         // But remember that we consumed an open parenthesis at the start
                         self.accept_token(TokenType::CloseParenthesis)?;
