@@ -138,6 +138,14 @@ pub enum BinaryOperator {
 }
 
 #[derive(Debug)]
+enum MemberOperator {
+    /// operator.
+    Direct,
+    /// operator->
+    Indirect,
+}
+
+#[derive(Debug)]
 struct UnaryOperatorExpression {
     operator: Node<UnaryOperator>,
     operand: Node<Expression>,
@@ -158,6 +166,13 @@ struct TernaryOperatorExpression {
 }
 
 #[derive(Debug)]
+struct MemberExpression {
+    operator: Node<MemberOperator>,
+    expression: Node<Expression>,
+    identifier: Node<String>,
+}
+
+#[derive(Debug)]
 enum Expression {
     Identifier(String), // TODO: This should be a pointer to the symbol table entry of the identifier
     Constant(Constant),
@@ -165,12 +180,29 @@ enum Expression {
     UnaryOperator(Box<UnaryOperatorExpression>),
     BinaryOperator(Box<BinaryOperatorExpression>),
     TernaryOperator(Box<TernaryOperatorExpression>),
+    SizeofType(Box<Node<TypeName>>),
+    SizeofVal(Box<Node<Expression>>),
+    Alignof(Box<Node<TypeName>>),
+    Member(Box<MemberExpression>),
 }
 
 #[derive(Debug, Clone)]
 enum FunctionSpecifier {
     Inline,
     NoReturn,
+}
+
+/// Used to parse type-names
+#[derive(Debug)]
+enum SpecifierQualifier {
+    TypeSpecifier(TypeSpecifier),
+    TypeQualifier(TypeQualifier),
+}
+
+#[derive(Debug)]
+struct TypeName {
+    specifier_qualifier_list: Vec<Node<SpecifierQualifier>>,
+    abstract_declarator: Option<Node<Declarator>>,
 }
 
 #[derive(Debug, Clone)]
@@ -350,6 +382,22 @@ impl fmt::Display for DeclarationSpecifier {
     }
 }
 
+impl fmt::Display for SpecifierQualifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SpecifierQualifier::TypeSpecifier(specifier) => write!(f, "{:?}", specifier),
+            SpecifierQualifier::TypeQualifier(qualifier) => write!(f, "{:?}", qualifier),
+        }
+    }
+}
+
+fn display_typename(type_name: &Node<TypeName>) {
+    add_branch!("SpecifierQualifiers");
+    for spec_qual in &type_name.node.specifier_qualifier_list {
+        add_leaf!("{}", spec_qual);
+    }
+}
+
 fn display_expr(expression: &Expression, span: &Span) {
     match &expression {
         Expression::Constant(constant) => {
@@ -411,6 +459,45 @@ fn display_expr(expression: &Expression, span: &Span) {
             }
         }
         Expression::StringLiteral(_) => todo!(),
+        Expression::SizeofType(type_name) => {
+            add_branch!("SizeofTypeExpression {}", span);
+            {
+                add_branch!("TypeName");
+                display_typename(&type_name);
+            }
+        }
+        Expression::SizeofVal(unary_exp) => {
+            add_branch!("SizeofValExpression {}", span);
+            display_expr(&unary_exp.node, &unary_exp.span);
+        }
+        Expression::Alignof(type_name) => {
+            add_branch!("AlignofExpression {}", span);
+            {
+                add_branch!("TypeName");
+                display_typename(&type_name);
+            }
+        }
+        Expression::Member(member_expr) => {
+            add_branch!("MemberExpression {}", span);
+            {
+                add_leaf!(
+                    "MemberOperator -> {:?} {}",
+                    member_expr.operator.node,
+                    member_expr.operator.span
+                );
+            }
+            {
+                add_branch!("MemberExpressionExpression");
+                display_expr(&member_expr.expression.node, &member_expr.expression.span);
+            }
+            {
+                add_leaf!(
+                    "MemberExpressionIdentifier -> \"{}\" {}",
+                    member_expr.identifier.node,
+                    member_expr.identifier.span
+                );
+            }
+        }
     }
 }
 
@@ -419,7 +506,7 @@ fn display_statement(statement: &Statement, span: &Span) {
         Statement::LabeledStatement(statement) => {
             add_branch!("LabeledStatement {}", span);
             {
-                add_branch!(
+                add_leaf!(
                     "Identifier -> \"{}\" {}",
                     statement.identifier.node,
                     statement.identifier.span
@@ -681,6 +768,33 @@ pub fn display_translationunit(tunit: &TranslationUnit) {
     }
 }
 
+/// Maps TokenType::Keyword -> SpecifierQualifier
+fn keyword2specififerqualifier(keyword: &Keyword) -> Option<SpecifierQualifier> {
+    let specqual = match keyword {
+        // Type Qualifiers
+        Keyword::Const => SpecifierQualifier::TypeQualifier(TypeQualifier::Const),
+        Keyword::Restrict => SpecifierQualifier::TypeQualifier(TypeQualifier::Restrict),
+        Keyword::Volatile => SpecifierQualifier::TypeQualifier(TypeQualifier::Volatile),
+        Keyword::_Atomic => SpecifierQualifier::TypeQualifier(TypeQualifier::Atomic),
+
+        // Type Specifiers
+        Keyword::Void => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Void),
+        Keyword::Char => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Char),
+        Keyword::Short => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Short),
+        Keyword::Int => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Int),
+        Keyword::Long => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Long),
+        Keyword::Float => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Float),
+        Keyword::Double => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Double),
+        Keyword::Signed => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Signed),
+        Keyword::Unsigned => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Unsigned),
+        Keyword::_Bool => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Bool),
+        Keyword::_Complex => SpecifierQualifier::TypeSpecifier(TypeSpecifier::Complex),
+
+        _ => return None,
+    };
+    Some(specqual)
+}
+
 /// Maps TokenType::Keyword -> DeclarationSpecifier
 fn keyword2declspec(keyword: &Keyword) -> Option<DeclarationSpecifier> {
     let declspec = match keyword {
@@ -730,6 +844,19 @@ fn keyword2declspec(keyword: &Keyword) -> Option<DeclarationSpecifier> {
     };
     // Return the declaration specifier type
     Some(declspec)
+}
+
+fn token2unaryop(token: &TokenType) -> Option<UnaryOperator> {
+    let unaryop = match token {
+        TokenType::BitwiseAndOperator => UnaryOperator::Address,
+        TokenType::Asterisk => UnaryOperator::Indirection,
+        TokenType::Plus => UnaryOperator::Plus,
+        TokenType::Minus => UnaryOperator::Minus,
+        TokenType::BitwiseComplimentOperator => UnaryOperator::Complement,
+        TokenType::LogicalNotOperator => UnaryOperator::Negate,
+        _ => return None,
+    };
+    Some(unaryop)
 }
 
 /// Token -> Assignment Binary Operator
@@ -1058,12 +1185,12 @@ impl<'a> Parser<'a> {
                         )),
                         Some((next, start, _)) => Err(CompilerError{
                             kind: CompilerErrorKind::SyntaxError,
-                            message: format!("Unexpected token: {:?}, expected a `(` (Function Declarator), or `;` (Direct Declarator)", next), 
+                            message: format!("Unexpected token: {:?}, expected a `(` (Function Declarator), or `;` (Direct Declarator)", next),
                             location: Some(start)
                         }),
                         None => Err(CompilerError{
                             kind: CompilerErrorKind::SyntaxError,
-                            message: "Unexpected token, expected a `(` (Function Declarator), or `;` (Direct Declarator), instead encountered an End of File".to_string(), 
+                            message: "Unexpected token, expected a `(` (Function Declarator), or `;` (Direct Declarator), instead encountered an End of File".to_string(),
                             location: None
                         })
                     }
@@ -1242,8 +1369,11 @@ impl<'a> Parser<'a> {
             Some((token, start, end)) => {
                 match token {
                     TokenType::Keyword(keyword) => {
-                        // Consume the next token in case of all keywords
-                        self.tokenizer.next_token()?;
+                        // Consume the next token in case of all keywords except Sizeof and _Alignof
+                        // Because they will be part of expressions that should be consumed by the parse_expr() function only
+                        if keyword != Keyword::Sizeof && keyword != Keyword::_Alignof {
+                            self.tokenizer.next_token()?;
+                        }
 
                         // Parse the statements starting with keywords
                         match keyword {
@@ -1605,6 +1735,20 @@ impl<'a> Parser<'a> {
                                     }),
                                 }
                             }
+                            Keyword::Sizeof | Keyword::_Alignof => {
+                                let expression = self.parse_expr()?;
+
+                                // Accept `;`
+                                let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
+
+                                // Calculate the span of the entire expression statement
+                                // Span = Start of the expression -> End of the semicolon
+                                let span = Span::new(start, semicolon_end);
+                                return Ok(Node::new(
+                                    Statement::ExpressionStatement(Some(expression)),
+                                    span,
+                                ));
+                            }
                             _ => Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
                                 message: format!(
@@ -1645,7 +1789,7 @@ impl<'a> Parser<'a> {
                                 ));
                             }
                         }
-                        // Else the statement is an expression-statement with grammar:
+                        // Else the statement is an expression-statement with the following grammar:
                         //      expression-statement:
                         //           expressionopt ;
 
@@ -2283,7 +2427,7 @@ impl<'a> Parser<'a> {
         //      multiplicative-expression * cast-expression
         //      multiplicative-expression / cast-expression
         //      multiplicative-expression % cast-expression
-        let mut expression = self.parse_primary_expr()?;
+        let mut expression = self.parse_cast_expr()?;
 
         // Doing the parsing iteratively instead of recursively
         loop {
@@ -2294,7 +2438,7 @@ impl<'a> Parser<'a> {
                         self.tokenizer.next_token()?;
                         // Parse the RHS expression
                         // For now it is assumed to be a primary expression
-                        let rhs = self.parse_primary_expr()?;
+                        let rhs = self.parse_cast_expr()?;
 
                         let operator = if token == TokenType::Asterisk {
                             BinaryOperator::Multiply
@@ -2326,6 +2470,300 @@ impl<'a> Parser<'a> {
             }
         }
         Ok(expression)
+    }
+
+    fn parse_cast_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        self.parse_unary_expr()
+    }
+
+    /// This function currently parses only typenames without an abstract-declarator
+    fn parse_type_name(&mut self) -> Result<Node<TypeName>, CompilerError> {
+        // type-name:
+        //       specifier-qualifier-list abstract-declaratoropt
+        //
+        // specifier-qualifier-list:
+        //      type-specifier specifier-qualifier-listopt
+        //      type-qualifier specifier-qualifier-listopt
+        //      alignment-specifier specifier-qualifier-listopt
+        let mut specifier_qualifier_list: Vec<Node<SpecifierQualifier>> = Vec::new();
+        while let Some((token, start, end)) = self.tokenizer.peek_token()? {
+            match token {
+                TokenType::Keyword(keyword) => match keyword2specififerqualifier(&keyword) {
+                    Some(spec_qual) => {
+                        // Push the specifier/qualifier
+                        specifier_qualifier_list.push(Node::new(spec_qual, Span::new(start, end)));
+                        // Consume the specifier/qualifier token
+                        self.tokenizer.next_token()?;
+                    }
+                    None => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: "Unexpected keyword: {}, expected a Specifier-Qualifier"
+                                .to_string(),
+                            location: Some(start),
+                        })
+                    }
+                },
+                _ => {
+                    // TODO: Parse an abstract-declarator here
+
+                    // Ensure that there is atleast one specifier-qualifier
+                    if specifier_qualifier_list.len() == 0 {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: "No specifier-qualifiers are present in type-name".to_string(),
+                            location: Some(start),
+                        });
+                    }
+
+                    // Calculate the span of the entire type-name
+                    // Span = Start of the first specifier-qualifier -> End of the last specifier-qualifier
+                    let span = Span::new(
+                        specifier_qualifier_list.first().unwrap().span.start,
+                        specifier_qualifier_list.last().unwrap().span.end,
+                    );
+
+                    // Create and return a TypeName
+                    return Ok(Node::new(
+                        TypeName {
+                            specifier_qualifier_list,
+                            abstract_declarator: None,
+                        },
+                        span,
+                    ));
+                }
+            }
+        }
+        // This error will occur when the file abruptly ends without the finishing of the type-name
+        // (const int*
+        //            ^ End of File
+        Err(CompilerError {
+            kind: CompilerErrorKind::SyntaxError,
+            message: "Expected a type-name, instead got end of file".to_string(),
+            location: None,
+        })
+    }
+
+    fn parse_unary_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        // unary-expression:
+        //      postfix-expression
+        //      ++ unary-expression
+        //      -- unary-expression
+        //      unary-operator cast-expression
+        //      sizeof unary-expression
+        //      sizeof ( type-name )
+        //      _Alignof ( type-name )
+
+        match self.tokenizer.peek_token()? {
+            Some((token, start, end)) => match token {
+                TokenType::IncrementOperator => {
+                    // Consume the `++`
+                    self.tokenizer.next_token()?;
+                    let unary_expr = self.parse_unary_expr()?;
+
+                    // Calculate the span of the entire unary expression
+                    let span = Span::new(start, unary_expr.span.end);
+                    // Create and return the Unary Operator Expression
+                    Ok(Node::new(
+                        Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
+                            operator: Node::new(UnaryOperator::PreIncrement, Span::new(start, end)),
+                            operand: unary_expr,
+                        })),
+                        span,
+                    ))
+                }
+                TokenType::DecrementOperator => {
+                    // Consume the `--`
+                    self.tokenizer.next_token()?;
+                    let unary_expr = self.parse_unary_expr()?;
+
+                    // Calculate the span of the entire unary expression
+                    let span = Span::new(start, unary_expr.span.end);
+                    // Create and return the Unary Operator Expression
+                    Ok(Node::new(
+                        Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
+                            operator: Node::new(UnaryOperator::PreDecrement, Span::new(start, end)),
+                            operand: unary_expr,
+                        })),
+                        span,
+                    ))
+                }
+                TokenType::Keyword(Keyword::Sizeof) => {
+                    // Differentiating between SizeofVal and SizeofType is a bit complicated
+                    // Consume the Sizeof Keyword
+                    self.tokenizer.next_token()?;
+
+                    // Check if the next token is `(`
+                    if let Some((TokenType::OpenParenthesis, paren_start, _)) =
+                        self.tokenizer.peek_token()?
+                    {
+                        self.tokenizer.next_token()?;
+                        if let Some((TokenType::Keyword(keyword), keyword_start, _)) =
+                            self.tokenizer.peek_token()?
+                        {
+                            if let Some(_) = keyword2specififerqualifier(&keyword) {
+                                let type_name = self.parse_type_name()?;
+                                let (_, paren_end) =
+                                    self.accept_token(TokenType::CloseParenthesis)?;
+
+                                let span = Span::new(start, paren_end);
+
+                                return Ok(Node::new(
+                                    Expression::SizeofType(Box::new(type_name)),
+                                    span,
+                                ));
+                            } else {
+                                return Err(CompilerError {
+                                    kind: CompilerErrorKind::SyntaxError,
+                                    message: format!("Expected a specifier-qualifier or an expression, instead got keyword: {:?}", keyword),
+                                    location: Some(keyword_start)
+                                });
+                            }
+                        } else {
+                            // Parse an expression
+                            let mut expression = self.parse_expr()?;
+                            // But remember that we consumed an open parenthesis at the start
+                            self.accept_token(TokenType::CloseParenthesis)?;
+
+                            // Check for any postfix operators
+                            match self.tokenizer.peek_token()? {
+                                Some((operator_token, op_start, op_end)) => match operator_token {
+                                    TokenType::IncrementOperator => {
+                                        self.tokenizer.next_token()?;
+                                        let span = Span::new(paren_start, op_end);
+                                        expression = Node::new(Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
+                                            operator: Node::new(UnaryOperator::PostIncrement, Span::new(op_start, op_end)),
+                                            operand: expression
+                                        })), span);
+                                    }
+                                    TokenType::DecrementOperator => {
+                                        self.tokenizer.next_token()?;
+                                        let span = Span::new(paren_start, op_end);
+                                        expression = Node::new(Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
+                                            operator: Node::new(UnaryOperator::PostDecrement, Span::new(op_start, op_end)),
+                                            operand: expression
+                                        })), span);
+                                    }
+                                    TokenType::DotOperator | TokenType::ArrowOperator => {
+                                        self.tokenizer.next_token()?;
+                                        // Expect an identifier
+                                        match self.tokenizer.next_token()? {
+                                            Some((TokenType::Identifier(identifier), id_start, id_end)) => {
+                                                let span = Span::new(paren_start, id_end);
+
+                                                let operator = if operator_token == TokenType::DotOperator {
+                                                    MemberOperator::Direct
+                                                } else {
+                                                    MemberOperator::Indirect
+                                                };
+
+                                                expression = Node::new(Expression::Member(Box::new(MemberExpression {
+                                                    operator: Node::new(operator, Span::new(op_start, op_end)),
+                                                    expression,
+                                                    identifier: Node::new(identifier, Span::new(id_start, id_end))
+                                                })), span);
+                                            }
+                                            Some((unexpected, unexpected_start, _)) => {
+                                                return Err(CompilerError {
+                                                    kind: CompilerErrorKind::SyntaxError,
+                                                    message: format!("Expected an identifier, instead got {:?}", unexpected),
+                                                    location: Some(unexpected_start)
+                                                })
+                                            }
+                                            None => {
+                                                return Err(CompilerError {
+                                                    kind: CompilerErrorKind::SyntaxError,
+                                                    message: "Expected an identifier, instead got end of file".to_string(),
+                                                    location: None
+                                                })
+                                            }
+                                        }
+                                    }
+                                    TokenType::OpenSquareBracket => {
+                                        self.tokenizer.next_token()?;
+                                        let index_expr = self.parse_expr()?;
+                                        let (_, bracket_end) = self.accept_token(TokenType::CloseSquareBracket)?;
+
+                                        let span = Span::new(paren_start, bracket_end);
+                                        expression = Node::new(Expression::BinaryOperator(Box::new(BinaryOperatorExpression {
+                                            operator: Node::new(BinaryOperator::Index, Span::new(op_start, op_end)),
+                                            lhs: expression,
+                                            rhs: index_expr
+                                        })), span)
+                                    }
+                                    _ => {},
+                                },
+                                None => return Err(CompilerError {
+                                    kind: CompilerErrorKind::SyntaxError,
+                                    message: "Expected a postfix operator or end of expression (semicolon or close parenthesis), instead got end of file".to_string(),
+                                    location: None
+                                })
+                            }
+
+                            let span = Span::new(start, expression.span.end);
+                            Ok(Node::new(Expression::SizeofVal(Box::new(expression)), span))
+                        }
+                    } else {
+                        let unary_expr = self.parse_unary_expr()?;
+                        let span = Span::new(start, unary_expr.span.end);
+                        Ok(Node::new(Expression::SizeofVal(Box::new(unary_expr)), span))
+                    }
+                }
+                TokenType::Keyword(Keyword::_Alignof) => {
+                    self.tokenizer.next_token()?;
+
+                    self.accept_token(TokenType::OpenParenthesis)?;
+                    let type_name = self.parse_type_name()?;
+                    let (_, paren_end) = self.accept_token(TokenType::CloseParenthesis)?;
+
+                    let span = Span::new(start, paren_end);
+
+                    Ok(Node::new(Expression::Alignof(Box::new(type_name)), span))
+                }
+                tokentype => {
+                    if let Some(unary_op) = token2unaryop(&tokentype) {
+                        // Consume the unary operator
+                        self.tokenizer.next_token()?;
+                        let unary_expr = self.parse_unary_expr()?;
+
+                        // Calculate the span of the entire unary expression
+                        let span = Span::new(start, unary_expr.span.end);
+                        // Create and return the Unary Operator Expression
+                        Ok(Node::new(
+                            Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
+                                operator: Node::new(unary_op, Span::new(start, end)),
+                                operand: unary_expr,
+                            })),
+                            span,
+                        ))
+                    } else {
+                        self.parse_postfix_expr()
+                    }
+                }
+            },
+            None => {
+                return Err(CompilerError {
+                    kind: CompilerErrorKind::SyntaxError,
+                    message: "Expected an expression, instead got end of file".to_string(),
+                    location: None,
+                })
+            }
+        }
+    }
+
+    fn parse_postfix_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        // postfix-expression:
+        //      primary-expression
+        //      postfix-expression [ expression ]
+        //      postfix-expression ( argument-expression-listopt )
+        //      postfix-expression . identifier
+        //      postfix-expression -> identifier
+        //      postfix-expression ++
+        //      postfix-expression --
+        //      ( type-name ) { initializer-list }
+        //      ( type-name ) { initializer-list , }
+
+        self.parse_primary_expr()
     }
 
     fn parse_primary_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
