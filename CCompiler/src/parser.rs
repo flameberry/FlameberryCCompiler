@@ -918,13 +918,16 @@ fn is_expr_unary(expression: &Expression) -> bool {
     }
 }
 
+#[derive(Default)]
 pub struct Parser<'a> {
-    tokenizer: &'a mut Tokenizer<'a>,
+    tokenizer: Tokenizer<'a>,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokenizer: &'a mut Tokenizer<'a>) -> Self {
-        Parser { tokenizer }
+    pub fn new(src: &'a str) -> Self {
+        Parser {
+            tokenizer: Tokenizer::new(src),
+        }
     }
 
     /// The main parse function that uses the tokenizer to generate an Abstract Syntax Tree

@@ -158,8 +158,22 @@ pub struct Tokenizer<'a> {
     numeric_constant_regex: Regex, // Regular expression for a numeric constant in C
 }
 
+impl<'a> Default for Tokenizer<'a> {
+    fn default() -> Self {
+        Tokenizer {
+            cidx: 0,
+            srcbuffer: "",
+            peekedtoken: (TokenType::None, 0, 0),
+            peekedbytes: 0,
+            linerow: 0,
+            linecol: 0,
+            numeric_constant_regex: Regex::new(r"").unwrap(),
+        }
+    }
+}
+
 impl<'a> Tokenizer<'a> {
-    pub fn new(src: &str) -> Tokenizer {
+    pub fn new(src: &'a str) -> Self {
         Tokenizer {
             cidx: 0,
             srcbuffer: src,

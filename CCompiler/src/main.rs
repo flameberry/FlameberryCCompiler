@@ -1,24 +1,10 @@
+use flameberrycc::compiler::{Compiler, CompilerSpecification};
 use flameberrycc::parser::{display_translationunit, Parser};
-use flameberrycc::tokenizer::Tokenizer;
 use std::{fs, time::Instant};
 
 /// Returns true if the compilation succeeded else false
 fn compile(src: &str, srcpath: &str) -> bool {
-    let mut tokenizer = Tokenizer::new(src);
-
-    // Display output for debugging
-    // println!("Original:\n{}", src);
-    // println!("Preprocessed:\n{}", preprocessed_src);
-
-    // loop {
-    //     match tokenizer.next_token() {
-    //         Ok(Some(token)) => println!("{:?}", token),
-    //         Ok(None) => break,
-    //         Err(err) => panic!("{}", err),
-    //     }
-    // }
-
-    let mut parser = Parser::new(&mut tokenizer);
+    let mut parser = Parser::new(src);
     match parser.parse() {
         Ok(translation_unit) => {
             // println!("{:?}", translation_unit),
@@ -33,17 +19,11 @@ fn compile(src: &str, srcpath: &str) -> bool {
 }
 
 fn compile_file(srcpath: &str) {
-    let src = fs::read_to_string(srcpath);
-    println!("Compiling {}...", srcpath);
-    compile(
-        &src.unwrap_or_else(|err| {
-            panic!(
-                "Failed to read source file: {}: with error: {}",
-                srcpath, err
-            )
-        }),
-        srcpath,
-    );
+    let specification = CompilerSpecification {
+        target_file: srcpath,
+    };
+    let compiler = Compiler::new(specification);
+    compiler.compile();
 }
 
 fn run_tests(testpath: &str) {
@@ -82,11 +62,11 @@ fn run_tests(testpath: &str) {
 fn main() {
     let start = Instant::now();
 
-    let testpath = "/Users/flameberry/Developer/writing-a-c-compiler-tests/tests/chapter_2/valid";
-    run_tests(testpath);
+    // let testpath = "/Users/flameberry/Developer/writing-a-c-compiler-tests/tests/chapter_2/valid";
+    // run_tests(testpath);
 
-    // let testpath = "Sandbox/test.c";
-    // compile_file(testpath);
+    let testpath = "Sandbox/test.c";
+    compile_file(testpath);
 
     let end = Instant::now() - start;
     println!("Time taken: {:?}", end);
