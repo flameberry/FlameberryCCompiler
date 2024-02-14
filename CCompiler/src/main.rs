@@ -2,7 +2,8 @@ use flameberrycc::parser::{display_translationunit, Parser};
 use flameberrycc::tokenizer::Tokenizer;
 use std::{fs, time::Instant};
 
-fn compile(src: &str, srcpath: &str) {
+/// Returns true if the compilation succeeded else false
+fn compile(src: &str, srcpath: &str) -> bool {
     let mut tokenizer = Tokenizer::new(src);
 
     // Display output for debugging
@@ -19,9 +20,15 @@ fn compile(src: &str, srcpath: &str) {
 
     let mut parser = Parser::new(&mut tokenizer);
     match parser.parse() {
-        Ok(translation_unit) => display_translationunit(&translation_unit),
-        // Ok(translation_unit) => println!("{:?}", translation_unit),
-        Err(err) => println!("{}:{}", srcpath, err),
+        Ok(translation_unit) => {
+            // println!("{:?}", translation_unit),
+            display_translationunit(&translation_unit);
+            true
+        }
+        Err(err) => {
+            println!("{}:{}", srcpath, err);
+            false
+        }
     }
 }
 
@@ -42,6 +49,10 @@ fn compile_file(srcpath: &str) {
 fn run_tests(testpath: &str) {
     let directory =
         fs::read_dir(testpath).expect(&format!("Failed to read directory: {}", testpath));
+
+    let mut test_pass_count = 0;
+    let mut test_cases = 0;
+
     for testcase in directory {
         let testcasepath = testcase
             .expect("Failed to get the path of the test case!")
@@ -58,18 +69,23 @@ fn run_tests(testpath: &str) {
             })
         };
 
-        compile(&testprogramsrc, testcasepath.to_str().unwrap());
+        if compile(&testprogramsrc, testcasepath.to_str().unwrap()) {
+            test_pass_count += 1;
+        }
+        test_cases += 1;
     }
+
+    println!("Test cases passed: {}/{}", test_pass_count, test_cases);
 }
 
 fn main() {
     let start = Instant::now();
 
-    // let testpath = "/Users/flameberry/Developer/writing-a-c-compiler-tests/tests/chapter_1/valid";
-    // run_tests(testpath);
+    let testpath = "/Users/flameberry/Developer/writing-a-c-compiler-tests/tests/chapter_2/valid";
+    run_tests(testpath);
 
-    let testpath = "Sandbox/test.c";
-    compile_file(testpath);
+    // let testpath = "Sandbox/test.c";
+    // compile_file(testpath);
 
     let end = Instant::now() - start;
     println!("Time taken: {:?}", end);

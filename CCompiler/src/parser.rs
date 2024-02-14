@@ -3044,7 +3044,6 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-
         Err(CompilerError {
             kind: CompilerErrorKind::SyntaxError,
             message: "Expected a postfix-expression, instead found end of file".to_string(),
