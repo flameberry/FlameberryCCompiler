@@ -1934,7 +1934,14 @@ impl<'a> Parser<'a> {
                         ));
                     }
                 }
-                _ => todo!(),
+                None => {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SyntaxError,
+                        message: "Expected a declaration or a statement, instead got end of file"
+                            .to_string(),
+                        location: None,
+                    })
+                }
             };
         }
 

@@ -58,21 +58,22 @@ fn run_tests(testpath: &str) {
             .expect("Failed to get the path of the test case!")
             .path();
 
-        let testprogramsrc = {
-            let testcasepath = &testcasepath;
-            fs::read_to_string(testcasepath).unwrap_or_else(|err| {
-                panic!(
-                    "Failed to read file: {} with error: {}",
-                    testcasepath.display(),
-                    err
-                );
-            })
-        };
-
-        if compile(&testprogramsrc, testcasepath.to_str().unwrap()) {
-            test_pass_count += 1;
+        if !testcasepath.is_dir() {
+            let testprogramsrc = {
+                let testcasepath = &testcasepath;
+                fs::read_to_string(testcasepath).unwrap_or_else(|err| {
+                    panic!(
+                        "Failed to read file: {} with error: {}",
+                        testcasepath.display(),
+                        err
+                    );
+                })
+            };
+            if compile(&testprogramsrc, testcasepath.to_str().unwrap()) {
+                test_pass_count += 1;
+            }
+            test_cases += 1;
         }
-        test_cases += 1;
     }
 
     println!("Test cases passed: {}/{}", test_pass_count, test_cases);
