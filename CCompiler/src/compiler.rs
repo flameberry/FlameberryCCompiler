@@ -1,4 +1,5 @@
-use crate::parser::{display_translationunit, Parser};
+use crate::ast::display_translationunit;
+use crate::parser::Parser;
 use std::fs;
 
 pub struct CompilerSpecification<'a> {

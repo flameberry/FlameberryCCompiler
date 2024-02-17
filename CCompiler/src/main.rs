@@ -1,5 +1,6 @@
+use flameberrycc::ast::display_translationunit;
 use flameberrycc::compiler::{Compiler, CompilerSpecification};
-use flameberrycc::parser::{display_translationunit, Parser};
+use flameberrycc::parser::Parser;
 use std::{fs, time::Instant};
 
 /// Returns true if the compilation succeeded else false
