@@ -33,7 +33,7 @@ int main(void) {
 
     int j = i + 1;
     int result = (float)wow(&i, j)(&j, i);
-    AdityaG();
+    AdityaG(i, (i = 5, i * 3 - 2));
 
     *i = 2 + 2;
     i += 23 % 4;
