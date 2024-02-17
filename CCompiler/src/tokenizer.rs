@@ -218,8 +218,6 @@ impl<'a> Tokenizer<'a> {
         self.peeked_linerow = self.linerow;
         self.peeked_linecol = self.linecol;
 
-        // let (mut temp_srcbuffer, mut skipped_bytes) = self.peekover_whitespace();
-
         // Equivalent to self.skip_whitespace() except we don't advance the tokenizer
         let (_, mut skipped_bytes) = iter_while(self.srcbuffer, |ch| {
             if ch == '\n' {
@@ -242,7 +240,6 @@ impl<'a> Tokenizer<'a> {
             let (_, bytes) = iter_while(temp_srcbuffer, |ch| ch != '\n');
             temp_srcbuffer = &temp_srcbuffer[bytes..];
 
-            // let (_, leading_wbytes) = iter_while(temp_srcbuffer, |ch| ch.is_whitespace());
             let (_, leading_wbytes) = iter_while(self.srcbuffer, |ch| {
                 if ch == '\n' {
                     self.peeked_linerow += 1;
@@ -366,26 +363,6 @@ impl<'a> Tokenizer<'a> {
         //  Update the actual buffer and it's index
         self.cidx += bytes;
         self.srcbuffer = &self.srcbuffer[bytes..];
-    }
-
-    fn peekover_whitespace(&mut self) -> (&str, usize) {
-        // Equivalent to self.skip_whitespace() except we don't advance the tokenizer
-        let (_, skipped_bytes) = iter_while(self.srcbuffer, |ch| {
-            if ch == '\n' {
-                self.peeked_linerow += 1;
-                self.peeked_linecol = 1;
-            }
-            let whitespace = ch.is_whitespace();
-            if whitespace {
-                self.peeked_linecol += 1;
-            }
-            whitespace
-        });
-
-        // Emulating advancement of the srcbuffer by skipping the whitespace
-        let temp_srcbuffer = &self.srcbuffer[skipped_bytes..];
-
-        (temp_srcbuffer, skipped_bytes)
     }
 
     fn tokenize(&self, src: &str) -> Result<(TokenType, usize), CompilerError> {
