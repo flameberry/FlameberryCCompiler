@@ -207,7 +207,16 @@ enum FunctionSpecifier {
     NoReturn,
 }
 
-/// Used to parse type-names
+#[derive(Debug, Clone)]
+enum DeclarationSpecifier {
+    StorageClassSpecifier(StorageClassSpecifier),
+    TypeSpecifier(TypeSpecifier),
+    TypeQualifier(TypeQualifier),
+    FunctionSpecifier(FunctionSpecifier),
+    // TODO: Add alignment specifier, etc. according to C17 standard
+}
+
+/// Used to store parsed type-names
 #[derive(Debug)]
 enum SpecifierQualifier {
     TypeSpecifier(TypeSpecifier),
@@ -221,70 +230,9 @@ struct TypeName {
 }
 
 #[derive(Debug, Clone)]
-enum DeclarationSpecifier {
-    StorageClassSpecifier(StorageClassSpecifier),
-    TypeSpecifier(TypeSpecifier),
-    TypeQualifier(TypeQualifier),
-    FunctionSpecifier(FunctionSpecifier),
-    // TODO: Add alignment specifier, etc. according to C17 standard
-}
-
-#[derive(Debug, Clone)]
 enum Declarator {
     FunctionDeclarator(FunctionDeclarator),
     DirectDeclarator(String), // Currently this is just equivalent to an Identifier (Arrays, Pointers, etc are not considered)
-}
-
-#[derive(Debug, Clone)]
-struct FunctionParameter {
-    // This key difference between this struct and `Declaration` struct is that the `declarator` is Optional here
-    specifiers: Vec<Node<DeclarationSpecifier>>,
-    declarator: Option<Node<Declarator>>,
-}
-
-#[derive(Debug, Clone)]
-struct FunctionDeclarator {
-    identifier: String,
-    parameters: Vec<Node<FunctionParameter>>,
-}
-
-#[derive(Debug)]
-struct FunctionDefinition {
-    specifiers: Vec<Node<DeclarationSpecifier>>,
-    declarator: Node<FunctionDeclarator>,
-    body: Node<Statement>, // Function body can be one statement or a compound statement
-}
-
-#[derive(Debug)]
-struct Declaration {
-    // Function Declaration
-    // int                      function(DeclarationSpecifiers param1, DeclarationSpecifiers param2);
-    // ^^^                      ^^^
-    // DeclarationSpecifier     Declarator
-
-    // Variable Declaration
-    // int                      variable;
-    // ^^^                      ^^^
-    // DeclarationSpecifier     Declarator
-    specifiers: Vec<Node<DeclarationSpecifier>>,
-    init_declarators: Vec<Node<InitDeclarator>>,
-}
-
-#[derive(Debug)]
-struct InitDeclarator {
-    declarator: Node<Declarator>,
-    initializer: Option<Node<Initializer>>,
-}
-
-#[derive(Debug)]
-enum Initializer {
-    AssignmentExpression(Expression),
-}
-
-#[derive(Debug)]
-enum BlockItem {
-    Declaration(Declaration),
-    Statement(Statement),
 }
 
 #[derive(Debug)]
@@ -318,9 +266,9 @@ struct CaseStatement {
 }
 
 #[derive(Debug)]
-struct SwitchStatement {
-    expression: Node<Expression>,
-    statement: Node<Statement>,
+enum BlockItem {
+    Declaration(Declaration),
+    Statement(Statement),
 }
 
 #[derive(Debug)]
@@ -328,6 +276,12 @@ struct IfStatement {
     expression: Node<Expression>,
     if_block: Node<Statement>,
     else_block: Option<Node<Statement>>,
+}
+
+#[derive(Debug)]
+struct SwitchStatement {
+    expression: Node<Expression>,
+    statement: Node<Statement>,
 }
 
 #[derive(Debug)]
@@ -361,6 +315,52 @@ enum ForInitializer {
 enum ExternalDeclaration {
     FunctionDefinition(FunctionDefinition),
     Declaration(Declaration),
+}
+
+#[derive(Debug)]
+struct FunctionDefinition {
+    specifiers: Vec<Node<DeclarationSpecifier>>,
+    declarator: Node<FunctionDeclarator>,
+    body: Node<Statement>, // Function body can be one statement or a compound statement
+}
+
+#[derive(Debug, Clone)]
+struct FunctionDeclarator {
+    identifier: String,
+    parameters: Vec<Node<FunctionParameter>>,
+}
+
+#[derive(Debug, Clone)]
+struct FunctionParameter {
+    // This key difference between this struct and `Declaration` struct is that the `declarator` is Optional here
+    specifiers: Vec<Node<DeclarationSpecifier>>,
+    declarator: Option<Node<Declarator>>,
+}
+
+#[derive(Debug)]
+struct Declaration {
+    // Function Declaration
+    // int                      function(DeclarationSpecifiers param1, DeclarationSpecifiers param2);
+    // ^^^                      ^^^
+    // DeclarationSpecifier     Declarator
+
+    // Variable Declaration
+    // int                      variable;
+    // ^^^                      ^^^
+    // DeclarationSpecifier     Declarator
+    specifiers: Vec<Node<DeclarationSpecifier>>,
+    init_declarators: Vec<Node<InitDeclarator>>,
+}
+
+#[derive(Debug)]
+struct InitDeclarator {
+    declarator: Node<Declarator>,
+    initializer: Option<Node<Initializer>>,
+}
+
+#[derive(Debug)]
+enum Initializer {
+    AssignmentExpression(Expression),
 }
 
 /// Grammar for Translation Unit according to C17 ISO standard:
@@ -1243,6 +1243,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_declarator(&mut self) -> Result<Node<Declarator>, CompilerError> {
+        // declarator:
+        //      pointeropt direct-declarator
         match self.tokenizer.next_token()? {
             Some((token, start, end)) => match token {
                 TokenType::Identifier(identifier) => {
@@ -1288,6 +1290,18 @@ impl<'a> Parser<'a> {
             },
             None => panic!("Internal Error: Expected Identifier, but found no token!"),
         }
+    }
+
+    fn parse_direct_declarator(&mut self) {
+        // direct-declarator:
+        //      identifier
+        //      ( declarator )
+        //      direct-declarator [ type-qualifier-listopt assignment-expressionopt ]
+        //      direct-declarator [ static type-qualifier-listopt assignment-expression ]
+        //      direct-declarator [ type-qualifier-list static assignment-expression ]
+        //      direct-declarator [ type-qualifier-listopt * ]
+        //      direct-declarator ( parameter-type-list )
+        //      direct-declarator ( identifier-listopt )
     }
 
     fn parse_parameters(&mut self) -> Result<Vec<Node<FunctionParameter>>, CompilerError> {
@@ -1941,6 +1955,14 @@ impl<'a> Parser<'a> {
     /// Note: This function doesn't consume either of OpenBrace and CloseBrace tokens associated with it.
     /// It is the caller's responsibility to check for OpenBrace and consume a CloseBrace after calling this function.
     fn parse_compound_stmt(&mut self) -> Result<Node<Statement>, CompilerError> {
+        // compound-statement:
+        //      { block-item-listopt }
+        // block-item-list:
+        //      block-item
+        //      block-item-list block-item
+        // block-item:
+        //      declaration
+        //      statement
         let mut blockitems: Vec<Node<BlockItem>> = Vec::new();
 
         let span_start = self.tokenizer.get_cidx();
