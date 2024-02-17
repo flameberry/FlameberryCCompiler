@@ -1,54 +1,54 @@
 use std::{fmt, ops::Add, usize};
 
 #[derive(Debug, Copy, Clone)]
-pub struct TokenPosition {
+pub struct FileLocation {
     line: usize,   // The line number in the source code
     column: usize, // The offset from the start of the line
 }
 
-impl fmt::Display for TokenPosition {
+impl fmt::Display for FileLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.line, self.column)
     }
 }
 
-impl Add for TokenPosition {
+impl Add for FileLocation {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        TokenPosition {
+        FileLocation {
             line: self.line + rhs.line,
             column: self.column + rhs.column,
         }
     }
 }
 
-impl TokenPosition {
+impl FileLocation {
     pub fn none() -> Self {
-        TokenPosition { line: 0, column: 0 }
+        FileLocation { line: 0, column: 0 }
     }
 
     pub fn new(line: usize, column: usize) -> Self {
-        TokenPosition { line, column }
+        FileLocation { line, column }
     }
 }
 
 // Byte offset in the input buffer
 #[derive(Debug, Copy, Clone)]
 pub struct Span {
-    pub start: TokenPosition,
-    pub end: TokenPosition,
+    pub start: FileLocation,
+    pub end: FileLocation,
 }
 
 impl Span {
-    pub fn new(start: TokenPosition, end: TokenPosition) -> Self {
+    pub fn new(start: FileLocation, end: FileLocation) -> Self {
         Span { start, end }
     }
 
     pub fn none() -> Self {
         Span {
-            start: TokenPosition::none(),
-            end: TokenPosition::none(),
+            start: FileLocation::none(),
+            end: FileLocation::none(),
         }
     }
 }

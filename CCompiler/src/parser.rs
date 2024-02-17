@@ -4,7 +4,7 @@ use core::fmt;
 use debug_tree::*;
 
 use crate::errors::{CompilerError, CompilerErrorKind};
-use crate::node::{Node, Span, TokenPosition};
+use crate::node::{FileLocation, Node, Span};
 use crate::tokenizer::{FloatingPointType, IntegerType, Keyword, TokenType, Tokenizer};
 
 #[derive(Debug, Clone)]
@@ -726,7 +726,7 @@ fn display_funcdeclarator(declarator: &FunctionDeclarator, span: Span) {
         declarator.identifier,
         Span::new(
             span.start,
-            span.start + TokenPosition::new(declarator.identifier.len(), 0)
+            span.start + FileLocation::new(declarator.identifier.len(), 0)
         )
     );
 
@@ -2622,7 +2622,7 @@ impl<'a> Parser<'a> {
         //      unary-expression
         //      ( type-name ) cast-expression
         let mut typenames: Vec<Node<TypeName>> = Vec::new();
-        let mut start_arr: Vec<TokenPosition> = Vec::new();
+        let mut start_arr: Vec<FileLocation> = Vec::new();
 
         while let Some((TokenType::OpenParenthesis, paren_start, _)) =
             self.tokenizer.peek_token()?
@@ -2911,7 +2911,7 @@ impl<'a> Parser<'a> {
     fn parse_postfix_operators_with_init_expr(
         &mut self,
         mut expression: Node<Expression>,
-        expr_start: TokenPosition,
+        expr_start: FileLocation,
     ) -> Result<Node<Expression>, CompilerError> {
         // postfix-expression:
         //      primary-expression
@@ -3217,7 +3217,7 @@ impl<'a> Parser<'a> {
     fn accept_token(
         &mut self,
         tokentype: TokenType,
-    ) -> Result<(TokenPosition, TokenPosition), CompilerError> {
+    ) -> Result<(FileLocation, FileLocation), CompilerError> {
         match self.tokenizer.next_token()? {
             Some((token, start, end)) => {
                 if token == tokentype {

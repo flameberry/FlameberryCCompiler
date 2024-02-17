@@ -1,7 +1,7 @@
 //! Module for performing lexical analysis on source code.
 use crate::{
     errors::{CompilerError, CompilerErrorKind},
-    node::TokenPosition,
+    node::FileLocation,
 };
 
 use regex::Regex;
@@ -134,7 +134,7 @@ pub enum TokenType {
 //   ^^       ^^         ^^     ^^ Token End
 //   Alias    Token      Token Start
 
-type Token = (TokenType, TokenPosition, TokenPosition);
+type Token = (TokenType, FileLocation, FileLocation);
 //   ^^       ^^         ^^             ^^
 //   Alias    Token      Token Start      Token End
 
@@ -178,11 +178,7 @@ impl<'a> Default for Tokenizer<'a> {
         Tokenizer {
             cidx: 0,
             srcbuffer: "",
-            peekedtoken: (
-                TokenType::None,
-                TokenPosition::none(),
-                TokenPosition::none(),
-            ),
+            peekedtoken: (TokenType::None, FileLocation::none(), FileLocation::none()),
             peekedbytes: 0,
             peeked_linerow: 0,
             peeked_linecol: 0,
@@ -198,12 +194,12 @@ impl<'a> Tokenizer<'a> {
         Tokenizer {
             cidx: 0,
             srcbuffer: src,
-            peekedtoken: (TokenType::None, TokenPosition::none(), TokenPosition::none()),
+            peekedtoken: (TokenType::None, FileLocation::none(), FileLocation::none()),
             peekedbytes: 0,
-            peeked_linerow: 0,
-            peeked_linecol: 0,
-            linerow: 0,
-            linecol: 0,
+            peeked_linerow: 1,
+            peeked_linecol: 1,
+            linerow: 1,
+            linecol: 1,
             numeric_constant_regex: Regex::new(
                 r"^[+-]?(?P<number>\d+(?P<dot>\.\d+)?(?P<exp>[eE][+-]?\d+)?)((?i)(?P<suffix>(u|l|ul|ull|f|d)))?\b"
             ).unwrap()
@@ -228,13 +224,14 @@ impl<'a> Tokenizer<'a> {
         let (_, mut skipped_bytes) = iter_while(self.srcbuffer, |ch| {
             if ch == '\n' {
                 self.peeked_linerow += 1;
-                self.peeked_linecol = 0;
+                self.peeked_linecol = 1;
+                return true;
             }
-            let whitespace = ch.is_whitespace();
-            if whitespace {
+            if ch.is_whitespace() {
                 self.peeked_linecol += 1;
+                return true;
             }
-            whitespace
+            false
         });
 
         // Emulating advancement of the srcbuffer by skipping the whitespace
@@ -243,22 +240,20 @@ impl<'a> Tokenizer<'a> {
         // Emulating advancement of the srcbuffer by skipping all the consecutive single line comments
         while temp_srcbuffer.starts_with("//") {
             let (_, bytes) = iter_while(temp_srcbuffer, |ch| ch != '\n');
-            self.peeked_linerow += 1;
-            self.peeked_linecol = 0;
-
             temp_srcbuffer = &temp_srcbuffer[bytes..];
 
             // let (_, leading_wbytes) = iter_while(temp_srcbuffer, |ch| ch.is_whitespace());
             let (_, leading_wbytes) = iter_while(self.srcbuffer, |ch| {
                 if ch == '\n' {
                     self.peeked_linerow += 1;
-                    self.peeked_linecol = 0;
+                    self.peeked_linecol = 1;
+                    return true;
                 }
-                let whitespace = ch.is_whitespace();
-                if whitespace {
+                if ch.is_whitespace() {
                     self.peeked_linecol += 1;
+                    return true;
                 }
-                whitespace
+                false
             });
 
             temp_srcbuffer = &temp_srcbuffer[leading_wbytes..];
@@ -276,8 +271,8 @@ impl<'a> Tokenizer<'a> {
             self.peekedbytes = skipped_bytes + bytes;
             self.peekedtoken = (
                 token,
-                TokenPosition::new(self.peeked_linerow, self.peeked_linecol - bytes),
-                TokenPosition::new(self.peeked_linerow, self.peeked_linecol),
+                FileLocation::new(self.peeked_linerow, self.peeked_linecol - bytes),
+                FileLocation::new(self.peeked_linerow, self.peeked_linecol),
             );
 
             // Return the newly parsed token instead of parsing the srcbuffer again
@@ -302,11 +297,7 @@ impl<'a> Tokenizer<'a> {
             let peekedtoken = self.peekedtoken.clone(); // Is this optimal?
 
             // Reset the peeked token info
-            self.peekedtoken = (
-                TokenType::None,
-                TokenPosition::none(),
-                TokenPosition::none(),
-            );
+            self.peekedtoken = (TokenType::None, FileLocation::none(), FileLocation::none());
             self.peekedbytes = 0;
 
             // Return the already stored token instead of parsing the srcbuffer again
@@ -331,8 +322,8 @@ impl<'a> Tokenizer<'a> {
             // Return the newly parsed token with it's start and end information
             Ok(Some((
                 token,
-                TokenPosition::new(self.linerow, self.linecol - bytes),
-                TokenPosition::new(self.linerow, self.linecol),
+                FileLocation::new(self.linerow, self.linecol - bytes),
+                FileLocation::new(self.linerow, self.linecol),
             )))
         }
     }
@@ -341,8 +332,8 @@ impl<'a> Tokenizer<'a> {
         self.cidx
     }
 
-    pub fn get_lineinfo(&self) -> TokenPosition {
-        TokenPosition::new(self.linerow, self.linecol)
+    pub fn get_lineinfo(&self) -> FileLocation {
+        FileLocation::new(self.linerow, self.linecol)
     }
 
     fn skip_comments(&mut self) {
@@ -362,13 +353,14 @@ impl<'a> Tokenizer<'a> {
         let (_, bytes) = iter_while(self.srcbuffer, |ch| {
             if ch == '\n' {
                 self.linerow += 1;
-                self.linecol = 0;
+                self.linecol = 1;
+                return true;
             }
-            let whitespace = ch.is_whitespace();
-            if whitespace {
+            if ch.is_whitespace() {
                 self.linecol += 1;
+                return true;
             }
-            whitespace
+            false
         });
 
         //  Update the actual buffer and it's index
@@ -381,7 +373,7 @@ impl<'a> Tokenizer<'a> {
         let (_, skipped_bytes) = iter_while(self.srcbuffer, |ch| {
             if ch == '\n' {
                 self.peeked_linerow += 1;
-                self.peeked_linecol = 0;
+                self.peeked_linecol = 1;
             }
             let whitespace = ch.is_whitespace();
             if whitespace {
