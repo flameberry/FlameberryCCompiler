@@ -1,6 +1,8 @@
 use core::fmt;
 use std::error::Error;
 
+use crate::node::TokenPosition;
+
 #[derive(Debug)]
 pub enum CompilerErrorKind {
     TokenizerError,
@@ -12,7 +14,7 @@ pub enum CompilerErrorKind {
 pub struct CompilerError {
     pub kind: CompilerErrorKind,
     pub message: String,
-    pub location: Option<usize>, // For now the location only contains the character index optionally
+    pub location: Option<TokenPosition>, // For now the location only contains the character index optionally
 }
 
 impl Error for CompilerError {}

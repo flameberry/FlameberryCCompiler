@@ -1,5 +1,8 @@
 //! Module for performing lexical analysis on source code.
-use crate::errors::{CompilerError, CompilerErrorKind};
+use crate::{
+    errors::{CompilerError, CompilerErrorKind},
+    node::TokenPosition,
+};
 
 use regex::Regex;
 
@@ -127,9 +130,19 @@ pub enum TokenType {
     Comma,                     // ,
 }
 
-type Token = (TokenType, usize, usize);
+// type Token = (TokenType, usize, usize);
 //   ^^       ^^         ^^     ^^ Token End
 //   Alias    Token      Token Start
+
+type Token = (TokenType, TokenPosition, TokenPosition);
+//   ^^       ^^         ^^             ^^
+//   Alias    Token      Token Start      Token End
+
+// struct Token {
+//     tokentype: TokenType,
+//     start: TokenPosition,
+//     end: TokenPosition,
+// }
 
 /// Iterates the src string as long as the given predicate is satisfied.
 /// Returns the sliced string which satisfied the predicate and also the number of characters in it
@@ -153,6 +166,8 @@ pub struct Tokenizer<'a> {
     srcbuffer: &'a str,            // Remaining source buffer
     peekedtoken: Token,            // Store the peeked token, to be reused by self.next_token()
     peekedbytes: usize,            // The number of bytes that were peeked
+    peeked_linerow: usize,         // The line row till which we have peeked
+    peeked_linecol: usize,         // The line column till which we have peeked
     linerow: usize,                // Current line character row
     linecol: usize,                // Current line character column
     numeric_constant_regex: Regex, // Regular expression for a numeric constant in C
@@ -163,8 +178,14 @@ impl<'a> Default for Tokenizer<'a> {
         Tokenizer {
             cidx: 0,
             srcbuffer: "",
-            peekedtoken: (TokenType::None, 0, 0),
+            peekedtoken: (
+                TokenType::None,
+                TokenPosition::none(),
+                TokenPosition::none(),
+            ),
             peekedbytes: 0,
+            peeked_linerow: 0,
+            peeked_linecol: 0,
             linerow: 0,
             linecol: 0,
             numeric_constant_regex: Regex::new(r"").unwrap(),
@@ -177,8 +198,10 @@ impl<'a> Tokenizer<'a> {
         Tokenizer {
             cidx: 0,
             srcbuffer: src,
-            peekedtoken: (TokenType::None, 0, 0),
+            peekedtoken: (TokenType::None, TokenPosition::none(), TokenPosition::none()),
             peekedbytes: 0,
+            peeked_linerow: 0,
+            peeked_linecol: 0,
             linerow: 0,
             linecol: 0,
             numeric_constant_regex: Regex::new(
@@ -195,8 +218,24 @@ impl<'a> Tokenizer<'a> {
             return Ok(Some(self.peekedtoken.clone()));
         }
 
+        // Set the peeked line row and column
+        self.peeked_linerow = self.linerow;
+        self.peeked_linecol = self.linecol;
+
+        // let (mut temp_srcbuffer, mut skipped_bytes) = self.peekover_whitespace();
+
         // Equivalent to self.skip_whitespace() except we don't advance the tokenizer
-        let (_, mut skipped_bytes) = iter_while(self.srcbuffer, |ch| ch.is_whitespace());
+        let (_, mut skipped_bytes) = iter_while(self.srcbuffer, |ch| {
+            if ch == '\n' {
+                self.peeked_linerow += 1;
+                self.peeked_linecol = 0;
+            }
+            let whitespace = ch.is_whitespace();
+            if whitespace {
+                self.peeked_linecol += 1;
+            }
+            whitespace
+        });
 
         // Emulating advancement of the srcbuffer by skipping the whitespace
         let mut temp_srcbuffer = &self.srcbuffer[skipped_bytes..];
@@ -204,9 +243,24 @@ impl<'a> Tokenizer<'a> {
         // Emulating advancement of the srcbuffer by skipping all the consecutive single line comments
         while temp_srcbuffer.starts_with("//") {
             let (_, bytes) = iter_while(temp_srcbuffer, |ch| ch != '\n');
+            self.peeked_linerow += 1;
+            self.peeked_linecol = 0;
+
             temp_srcbuffer = &temp_srcbuffer[bytes..];
 
-            let (_, leading_wbytes) = iter_while(temp_srcbuffer, |ch| ch.is_whitespace());
+            // let (_, leading_wbytes) = iter_while(temp_srcbuffer, |ch| ch.is_whitespace());
+            let (_, leading_wbytes) = iter_while(self.srcbuffer, |ch| {
+                if ch == '\n' {
+                    self.peeked_linerow += 1;
+                    self.peeked_linecol = 0;
+                }
+                let whitespace = ch.is_whitespace();
+                if whitespace {
+                    self.peeked_linecol += 1;
+                }
+                whitespace
+            });
+
             temp_srcbuffer = &temp_srcbuffer[leading_wbytes..];
             skipped_bytes += bytes + leading_wbytes;
         }
@@ -217,11 +271,13 @@ impl<'a> Tokenizer<'a> {
             let (token, bytes) = self.tokenize(&temp_srcbuffer)?;
 
             // Store the peeked token info
+            self.peeked_linecol += bytes;
+
             self.peekedbytes = skipped_bytes + bytes;
             self.peekedtoken = (
                 token,
-                self.cidx + skipped_bytes,
-                self.cidx + self.peekedbytes,
+                TokenPosition::new(self.peeked_linerow, self.peeked_linecol - bytes),
+                TokenPosition::new(self.peeked_linerow, self.peeked_linecol),
             );
 
             // Return the newly parsed token instead of parsing the srcbuffer again
@@ -238,11 +294,19 @@ impl<'a> Tokenizer<'a> {
             self.srcbuffer = &self.srcbuffer[self.peekedbytes..];
             self.cidx += self.peekedbytes;
 
+            // Update location values
+            self.linecol = self.peeked_linecol;
+            self.linerow = self.peeked_linerow;
+
             // This is a temporary variable
             let peekedtoken = self.peekedtoken.clone(); // Is this optimal?
 
             // Reset the peeked token info
-            self.peekedtoken = (TokenType::None, 0, 0);
+            self.peekedtoken = (
+                TokenType::None,
+                TokenPosition::none(),
+                TokenPosition::none(),
+            );
             self.peekedbytes = 0;
 
             // Return the already stored token instead of parsing the srcbuffer again
@@ -265,12 +329,20 @@ impl<'a> Tokenizer<'a> {
             self.linecol += bytes;
 
             // Return the newly parsed token with it's start and end information
-            Ok(Some((token, self.cidx - bytes, self.cidx)))
+            Ok(Some((
+                token,
+                TokenPosition::new(self.linerow, self.linecol - bytes),
+                TokenPosition::new(self.linerow, self.linecol),
+            )))
         }
     }
 
     pub fn get_cidx(&self) -> usize {
         self.cidx
+    }
+
+    pub fn get_lineinfo(&self) -> TokenPosition {
+        TokenPosition::new(self.linerow, self.linecol)
     }
 
     fn skip_comments(&mut self) {
@@ -296,12 +368,32 @@ impl<'a> Tokenizer<'a> {
             if whitespace {
                 self.linecol += 1;
             }
-            return whitespace;
+            whitespace
         });
 
         //  Update the actual buffer and it's index
         self.cidx += bytes;
         self.srcbuffer = &self.srcbuffer[bytes..];
+    }
+
+    fn peekover_whitespace(&mut self) -> (&str, usize) {
+        // Equivalent to self.skip_whitespace() except we don't advance the tokenizer
+        let (_, skipped_bytes) = iter_while(self.srcbuffer, |ch| {
+            if ch == '\n' {
+                self.peeked_linerow += 1;
+                self.peeked_linecol = 0;
+            }
+            let whitespace = ch.is_whitespace();
+            if whitespace {
+                self.peeked_linecol += 1;
+            }
+            whitespace
+        });
+
+        // Emulating advancement of the srcbuffer by skipping the whitespace
+        let temp_srcbuffer = &self.srcbuffer[skipped_bytes..];
+
+        (temp_srcbuffer, skipped_bytes)
     }
 
     fn tokenize(&self, src: &str) -> Result<(TokenType, usize), CompilerError> {

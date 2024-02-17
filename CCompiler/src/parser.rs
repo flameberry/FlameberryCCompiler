@@ -4,7 +4,7 @@ use core::fmt;
 use debug_tree::*;
 
 use crate::errors::{CompilerError, CompilerErrorKind};
-use crate::node::{Node, Span};
+use crate::node::{Node, Span, TokenPosition};
 use crate::tokenizer::{FloatingPointType, IntegerType, Keyword, TokenType, Tokenizer};
 
 #[derive(Debug, Clone)]
@@ -724,7 +724,10 @@ fn display_funcdeclarator(declarator: &FunctionDeclarator, span: Span) {
     add_leaf!(
         "Identifier -> \"{}\" {}",
         declarator.identifier,
-        Span::new(span.start, span.start + declarator.identifier.len())
+        Span::new(
+            span.start,
+            span.start + TokenPosition::new(declarator.identifier.len(), 0)
+        )
     );
 
     // Add Parameters
@@ -1965,7 +1968,7 @@ impl<'a> Parser<'a> {
         //      statement
         let mut blockitems: Vec<Node<BlockItem>> = Vec::new();
 
-        let span_start = self.tokenizer.get_cidx();
+        let span_start = self.tokenizer.get_lineinfo();
 
         while !matches!(
             self.tokenizer.peek_token()?,
@@ -2619,7 +2622,7 @@ impl<'a> Parser<'a> {
         //      unary-expression
         //      ( type-name ) cast-expression
         let mut typenames: Vec<Node<TypeName>> = Vec::new();
-        let mut start_arr: Vec<usize> = Vec::new();
+        let mut start_arr: Vec<TokenPosition> = Vec::new();
 
         while let Some((TokenType::OpenParenthesis, paren_start, _)) =
             self.tokenizer.peek_token()?
@@ -2908,7 +2911,7 @@ impl<'a> Parser<'a> {
     fn parse_postfix_operators_with_init_expr(
         &mut self,
         mut expression: Node<Expression>,
-        expr_start: usize,
+        expr_start: TokenPosition,
     ) -> Result<Node<Expression>, CompilerError> {
         // postfix-expression:
         //      primary-expression
@@ -3211,7 +3214,10 @@ impl<'a> Parser<'a> {
 
     /// Forces the next token to be the given `tokentype`
     /// Returns (start, end) both being character indices in the file
-    fn accept_token(&mut self, tokentype: TokenType) -> Result<(usize, usize), CompilerError> {
+    fn accept_token(
+        &mut self,
+        tokentype: TokenType,
+    ) -> Result<(TokenPosition, TokenPosition), CompilerError> {
         match self.tokenizer.next_token()? {
             Some((token, start, end)) => {
                 if token == tokentype {
