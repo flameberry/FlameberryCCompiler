@@ -62,7 +62,8 @@ fn run_tests(testpath: &str) {
 fn main() {
     let start = Instant::now();
 
-    // let testpath = "/Users/flameberry/Developer/writing-a-c-compiler-tests/tests/chapter_2/valid";
+    // let testpath =
+    //     "/Users/flameberry/Developer/writing-a-c-compiler-tests/tests/chapter_3/invalid_parse";
     // run_tests(testpath);
 
     let testpath = "Sandbox/test.c";
