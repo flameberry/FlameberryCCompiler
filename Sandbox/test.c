@@ -7,6 +7,7 @@ int nice = 69, wow(), good = 3;
 int main(void) {
   // This is a comment to try and mess with the tokenizer :D
   if (_g_AssumeABoolean + 3 < sizeof(const float)) {
+    "wow" + "I am a string literal";
     char ch = 'A';
     return g_NiceVar ? sizeof ch > 1 ? ch : 0 : 11;
   }

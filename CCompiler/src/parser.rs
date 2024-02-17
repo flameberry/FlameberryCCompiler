@@ -47,7 +47,7 @@ enum Constant {
     Character(char),
 }
 
-type StringLiteral = Vec<char>;
+type StringLiteral = String;
 
 #[derive(Debug)]
 pub enum UnaryOperator {
@@ -422,6 +422,9 @@ fn display_expr(expression: &Expression, span: &Span) {
                 Constant::Character(ch) => add_leaf!("Character -> '{}'", ch),
             }
         }
+        Expression::StringLiteral(strliteral) => {
+            add_leaf!("StringLiteral -> \"{}\" {}", strliteral, span);
+        }
         Expression::Identifier(identifier) => {
             add_leaf!("Identifier -> \"{}\" {}", identifier, span)
         }
@@ -472,7 +475,6 @@ fn display_expr(expression: &Expression, span: &Span) {
                 display_expr(&ternaryexpr.else_expr.node, &ternaryexpr.else_expr.span);
             }
         }
-        Expression::StringLiteral(_) => todo!(),
         Expression::SizeofType(type_name) => {
             add_branch!("SizeofTypeExpression {}", span);
             {
@@ -3225,7 +3227,14 @@ impl<'a> Parser<'a> {
                     Expression::Constant(Constant::Character(ch)),
                     Span::new(start, end),
                 ),
+                TokenType::StringLiteral(strliteral) => {
+                    Node::new(Expression::StringLiteral(strliteral), Span::new(start, end))
+                }
                 TokenType::OpenParenthesis => {
+                    // TODO: This is probably never gonna be reached now as cast expressions have ( type-name ) in there grammar
+                    // And we check if inside the Parenthesis is a type-name, if not then we parse an expression
+                    // So all such expressions inside parenthesis type of expressions will be parsed in the `parse_cast_expression` function
+
                     // Parse the entire expression inside the Parenthesis
                     // A key thinking behind this is that the `parse_expr()` function
                     // will keep parsing till it encounters something other than a recognized operator, constant or an identifier or another OpenParenthesis
