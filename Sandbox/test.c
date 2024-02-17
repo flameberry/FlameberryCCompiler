@@ -9,7 +9,8 @@ int main(void) {
   if (_g_AssumeABoolean + 3 < sizeof(const float)) {
     char ch = 'A';
     return g_NiceVar ? sizeof ch > 1 ? ch : 0 : 11;
-  } else if (g_NiceVar <= 44)
+  }
+  else if (g_NiceVar <= 44)
     return 69l;
   else if (g_GlobalVariable > 3)
     // This is a comment to try and mess with the tokenizer :D
@@ -19,9 +20,9 @@ int main(void) {
     return 0;
 
   int i = 0;
-  sizeof(sizeof(2));
+  sizeof((const int)sizeof(2));
   sizeof(((5 * 3)));
-  sizeof((((i))))++ ++;
+  sizeof((((i))))++++;
   while (i < 10) {
     while (1)
       return 2;
@@ -30,7 +31,7 @@ int main(void) {
     } while (i == sizeof(5 - 3));
 
     int j = i + 1;
-    wow(&i, j)(&j, i);
+    int result = (float)wow(&i, j)(&j, i);
     AdityaG();
 
     *i = 2 + 2;
@@ -53,24 +54,24 @@ Checkpoint:
   return 34;
 
   switch (i * i + i) {
-  case 2 * 32:
-    return --g_GlobalVariable * g_NiceVar;
-  default:
-    break;
+    case 2 * 32:
+      return --g_GlobalVariable * g_NiceVar;
+    default:
+      break;
   }
   // This is a comment to try and mess with the tokenizer :D
   {
     return _g_AssumeABoolean ? 4 & 12 ^ 13 | 1 && 5 ||
-                                   (++g_GlobalVariable + 2u << 2 & 31) *
-                                                   (((34l + _g_AssumeABoolean ==
-                                                      ++g_NiceVar >> 3) *
-                                                     34) *
-                                                    4) *
-                                                   23.6f -
-                                               45 >=
-                                           25 !=
-                                       0
-                             : 77;
+      (g_GlobalVariable++ + 2u << 2 & 31) *
+      (((34l + (double)_g_AssumeABoolean ==
+        ++g_NiceVar >> 3) *
+        34) *
+        4) *
+      23.6f -
+      45 >=
+      25 !=
+      0
+      : 77;
   }
 }
 

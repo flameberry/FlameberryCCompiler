@@ -179,6 +179,12 @@ struct CallExpression {
 }
 
 #[derive(Debug)]
+struct CastExpression {
+    typename: Node<TypeName>,
+    expression: Node<Expression>,
+}
+
+#[derive(Debug)]
 enum Expression {
     Identifier(String), // TODO: This should be a pointer to the symbol table entry of the identifier
     Constant(Constant),
@@ -191,6 +197,7 @@ enum Expression {
     Alignof(Box<Node<TypeName>>),
     Member(Box<MemberExpression>),
     Call(Box<CallExpression>),
+    Cast(Box<CastExpression>),
 }
 
 #[derive(Debug, Clone)]
@@ -521,6 +528,17 @@ fn display_expr(expression: &Expression, span: &Span) {
                         display_expr(&arg.node, &arg.span);
                     }
                 }
+            }
+        }
+        Expression::Cast(cast_expr) => {
+            add_branch!("CastExpression {}", span);
+            {
+                add_branch!("Typename");
+                display_typename(&cast_expr.typename);
+            }
+            {
+                add_branch!("Expression");
+                display_expr(&cast_expr.expression.node, &cast_expr.expression.span);
             }
         }
     }
@@ -914,7 +932,9 @@ fn is_expr_unary(expression: &Expression) -> bool {
         | Expression::Alignof(_)
         | Expression::Member(_)
         | Expression::Call(_) => true,
-        Expression::BinaryOperator(_) | Expression::TernaryOperator(_) => false,
+        Expression::Cast(_) | Expression::BinaryOperator(_) | Expression::TernaryOperator(_) => {
+            false
+        }
     }
 }
 
@@ -1021,9 +1041,25 @@ impl<'a> Parser<'a> {
                                     declspan,
                                 ));
                             }
-                            _ => todo!(),
+                            _ => {
+                                return Err(CompilerError {
+                                    kind: CompilerErrorKind::SyntaxError,
+                                    message: format!(
+                                        "Expected a `;` or `{{` instead got: {:?}",
+                                        token
+                                    ),
+                                    location: Some(start),
+                                })
+                            }
                         },
-                        _ => todo!(),
+                        _ => {
+                            return Err(CompilerError {
+                                kind: CompilerErrorKind::SyntaxError,
+                                message: "Expected a `;` or `{` instead got end of file"
+                                    .to_string(),
+                                location: None,
+                            })
+                        }
                     }
                 }
                 None => break,
@@ -2523,7 +2559,74 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_cast_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
-        self.parse_unary_expr()
+        // cast-expression:
+        //      unary-expression
+        //      ( type-name ) cast-expression
+        let mut typenames: Vec<Node<TypeName>> = Vec::new();
+        let mut start_arr: Vec<usize> = Vec::new();
+
+        while let Some((TokenType::OpenParenthesis, paren_start, _)) =
+            self.tokenizer.peek_token()?
+        {
+            // Consume the `(`
+            self.tokenizer.next_token()?;
+
+            let mut is_typename = false;
+            if let Some((TokenType::Keyword(keyword), _, _)) = self.tokenizer.peek_token()? {
+                if let Some(_) = keyword2declspec(&keyword) {
+                    // Parse a typename
+                    let typename = self.parse_type_name()?;
+                    self.accept_token(TokenType::CloseParenthesis)?;
+
+                    typenames.push(typename);
+                    start_arr.push(paren_start);
+                    is_typename = true;
+                }
+            }
+
+            if !is_typename {
+                let mut expression = self.parse_expr()?;
+                let (_, paren_end) = self.accept_token(TokenType::CloseParenthesis)?;
+
+                let expr_start = expression.span.start.clone();
+                expression = self.parse_postfix_operators_with_init_expr(expression, expr_start)?;
+
+                // Pop all the typenames and create cast expressions
+                for _ in 0..typenames.len() {
+                    // Calculate the span of the cast expression
+                    // Span = Start of the corresponding OpenParenthesis -> End of the expression's CloseParenthesis
+                    let span = Span::new(start_arr.pop().unwrap(), paren_end);
+                    // Create and store the cast expression
+                    expression = Node::new(
+                        Expression::Cast(Box::new(CastExpression {
+                            typename: typenames.pop().unwrap(),
+                            expression,
+                        })),
+                        span,
+                    )
+                }
+                return Ok(expression);
+            }
+        }
+
+        // Parse a Unary Expression
+        let mut expression = self.parse_unary_expr()?;
+
+        // Pop all the typenames and create cast expressions
+        for _ in 0..typenames.len() {
+            // Calculate the span of the cast expression
+            // Span = Start of the corresponding OpenParenthesis -> End of the expression's CloseParenthesis
+            let span = Span::new(start_arr.pop().unwrap(), expression.span.end);
+            // Create and store the cast expression
+            expression = Node::new(
+                Expression::Cast(Box::new(CastExpression {
+                    typename: typenames.pop().unwrap(),
+                    expression,
+                })),
+                span,
+            )
+        }
+        Ok(expression)
     }
 
     /// This function currently parses only typenames without an abstract-declarator
@@ -2684,193 +2787,38 @@ impl<'a> Parser<'a> {
                         // But remember that we consumed an open parenthesis at the start
                         self.accept_token(TokenType::CloseParenthesis)?;
 
-                        // Check for any number of postfix operators
-                        while let Some((operator_token, op_start, op_end)) =
-                            self.tokenizer.peek_token()?
-                        {
-                            match operator_token {
-                                TokenType::IncrementOperator => {
-                                    // Consume the `++`
-                                    self.tokenizer.next_token()?;
-                                    // Calculate span of the expression inside sizeof
-                                    // Span = Start of OpenParenthesis -> End of postfix operator
-                                    let span = Span::new(paren_start, op_end);
-                                    // Create and store a postfix expression using the already passed expression plus the postfix operator
-                                    expression = Node::new(
-                                        Expression::UnaryOperator(Box::new(
-                                            UnaryOperatorExpression {
-                                                operator: Node::new(
-                                                    UnaryOperator::PostIncrement,
-                                                    Span::new(op_start, op_end),
-                                                ),
-                                                operand: expression,
-                                            },
-                                        )),
-                                        span,
-                                    );
-                                }
-                                TokenType::DecrementOperator => {
-                                    // Consume the `--`
-                                    self.tokenizer.next_token()?;
-                                    // Calculate span of the expression inside sizeof
-                                    // Span = Start of OpenParenthesis -> End of postfix operator
-                                    let span = Span::new(paren_start, op_end);
-                                    // Create and store a postfix expression using the already passed expression plus the postfix operator
-                                    expression = Node::new(
-                                        Expression::UnaryOperator(Box::new(
-                                            UnaryOperatorExpression {
-                                                operator: Node::new(
-                                                    UnaryOperator::PostDecrement,
-                                                    Span::new(op_start, op_end),
-                                                ),
-                                                operand: expression,
-                                            },
-                                        )),
-                                        span,
-                                    );
-                                }
-                                TokenType::DotOperator | TokenType::ArrowOperator => {
-                                    self.tokenizer.next_token()?;
-                                    // Expect an identifier
-                                    match self.tokenizer.next_token()? {
-                                        Some((
-                                            TokenType::Identifier(identifier),
-                                            id_start,
-                                            id_end,
-                                        )) => {
-                                            // Calculate span of the expression inside sizeof
-                                            // Span = Start of OpenParenthesis -> End of the identifier
-                                            let span = Span::new(paren_start, id_end);
-                                            // Store the right member access operator
-                                            let operator =
-                                                if operator_token == TokenType::DotOperator {
-                                                    MemberOperator::Direct
-                                                } else {
-                                                    MemberOperator::Indirect
-                                                };
-                                            // Create and store a postfix expression using the already passed expression plus the postfix operator
-                                            expression = Node::new(
-                                                Expression::Member(Box::new(MemberExpression {
-                                                    operator: Node::new(
-                                                        operator,
-                                                        Span::new(op_start, op_end),
-                                                    ),
-                                                    expression,
-                                                    identifier: Node::new(
-                                                        identifier,
-                                                        Span::new(id_start, id_end),
-                                                    ),
-                                                })),
-                                                span,
-                                            );
-                                        }
-                                        Some((unexpected, unexpected_start, _)) => {
-                                            // This error will occur when there is no identifier specified after dot/arrow operator
-                                            // sizeof(struct_instance)-> ;
-                                            // sizeof(struct_instance).  ;
-                                            //                          ^ Missing identifiers
-                                            return Err(CompilerError {
-                                                kind: CompilerErrorKind::SyntaxError,
-                                                message: format!(
-                                                    "Expected an identifier, instead got {:?}",
-                                                    unexpected
-                                                ),
-                                                location: Some(unexpected_start),
-                                            });
-                                        }
-                                        None => {
-                                            // This error will occur when there is an end of file and no identifier specified after dot/arrow operator
-                                            // sizeof(struct_instance)->
-                                            // sizeof(struct_instance).
-                                            //                          ^^ End of file, instead of identifiers
-                                            return Err(CompilerError {
-                                                kind: CompilerErrorKind::SyntaxError,
-                                                message: "Expected an identifier, instead got end of file".to_string(),
-                                                location: None
-                                            });
-                                        }
-                                    }
-                                }
-                                TokenType::OpenSquareBracket => {
-                                    // Consume the `[`
-                                    self.tokenizer.next_token()?;
-                                    // Parse the expression that will be used as index into the array
-                                    let index_expr = self.parse_expr()?;
-                                    // Accept a `]`
-                                    let (_, bracket_end) =
-                                        self.accept_token(TokenType::CloseSquareBracket)?;
-                                    // Calculate the span of the expression inside sizeof
-                                    // Span = Start of OpenParenthesis -> End of Square Bracket
-                                    let span = Span::new(paren_start, bracket_end);
-                                    // Create and return a BinaryOperatorExpression with Indexing `[]` as the binary operator
-                                    // And the already passed expression as the LHS and index_expr as RHS
-                                    expression = Node::new(
-                                        Expression::BinaryOperator(Box::new(
-                                            BinaryOperatorExpression {
-                                                operator: Node::new(
-                                                    BinaryOperator::Index,
-                                                    Span::new(op_start, op_end),
-                                                ),
-                                                lhs: expression,
-                                                rhs: index_expr,
-                                            },
-                                        )),
-                                        span,
-                                    )
-                                }
-                                TokenType::OpenParenthesis => {
-                                    // Consume the `(`
-                                    self.tokenizer.next_token()?;
-                                    // Parse the Argument Expression List
-                                    let argument_expr_list =
-                                        self.parse_argument_expression_list()?;
-                                    // Conume the `)`
-                                    let (_, arg_paren_end) =
-                                        self.accept_token(TokenType::CloseParenthesis)?;
+                        // Check for any number of postfix operators keeping expression as the already parsed part
+                        expression =
+                            self.parse_postfix_operators_with_init_expr(expression, paren_start)?;
 
-                                    // Calculate the span of the expression inside sizeof
-                                    // Span = Start of OpenParenthesis -> End of CloseParenthesis
-                                    let span = Span::new(paren_start, arg_paren_end);
-                                    // Create and return a CallExpression with it's arguments
-                                    expression = Node::new(
-                                        Expression::Call(Box::new(CallExpression {
-                                            callee: expression,
-                                            argument_expr_list,
-                                        })),
-                                        span,
-                                    )
-                                }
-                                _ => {
-                                    // No need to modify the already parsed expression
-                                    // As there is no postfix operator to be taken care of
-                                    let span = Span::new(start, expression.span.end);
-                                    return Ok(Node::new(
-                                        Expression::SizeofVal(Box::new(expression)),
-                                        span,
-                                    ));
-                                }
-                            }
-                        }
-                        Err(CompilerError {
-                            kind: CompilerErrorKind::SyntaxError,
-                            message: "Expected a postfix operator or end of expression (semicolon or close parenthesis), instead got end of file".to_string(),
-                            location: None
-                        })
+                        // Calculate the span of the entire SizeofVal Expression
+                        // Span = Start of Sizeof Keyword -> End of Expression inside Sizeof
+                        let span = Span::new(start, expression.span.end);
+                        // Create and return the SizeofVal Expression
+                        Ok(Node::new(Expression::SizeofVal(Box::new(expression)), span))
                     } else {
+                        // Parse a unary expression
                         let unary_expr = self.parse_unary_expr()?;
+                        // Calculate the span of the entire unary expression
+                        // Span = Start of first token in the expression -> End of Expression
                         let span = Span::new(start, unary_expr.span.end);
+                        // Create and return a unary expression
                         Ok(Node::new(Expression::SizeofVal(Box::new(unary_expr)), span))
                     }
                 }
                 TokenType::Keyword(Keyword::_Alignof) => {
+                    // Consume the Alignof Keyword
                     self.tokenizer.next_token()?;
-
+                    // Accept a `(`
                     self.accept_token(TokenType::OpenParenthesis)?;
+                    // Parse a typename
                     let type_name = self.parse_type_name()?;
+                    // Accept a `)`
                     let (_, paren_end) = self.accept_token(TokenType::CloseParenthesis)?;
-
+                    // Calculate the span of the entire Alignof Expression
+                    // Span = Start of the Alignof Keyword -> End of parenthesis
                     let span = Span::new(start, paren_end);
-
+                    // Create and return an Alignof Expression
                     Ok(Node::new(Expression::Alignof(Box::new(type_name)), span))
                 }
                 tokentype => {
@@ -2902,19 +2850,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_postfix_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
-        // postfix-expression:
-        //      primary-expression
-        //      postfix-expression [ expression ]
-        //      postfix-expression ( argument-expression-listopt )
-        //      postfix-expression . identifier
-        //      postfix-expression -> identifier
-        //      postfix-expression ++
-        //      postfix-expression --
-        //      ( type-name ) { initializer-list }
-        //      ( type-name ) { initializer-list , }
-        let mut expression = self.parse_primary_expr()?;
-
+    fn parse_postfix_operators_with_init_expr(
+        &mut self,
+        mut expression: Node<Expression>,
+        expr_start: usize,
+    ) -> Result<Node<Expression>, CompilerError> {
         while let Some((token, start, end)) = self.tokenizer.peek_token()? {
             match token {
                 TokenType::IncrementOperator => {
@@ -2922,7 +2862,7 @@ impl<'a> Parser<'a> {
                     self.tokenizer.next_token()?;
                     // Calculate span of the entire postfix expression
                     // Span = Start of the previously parsed expression -> End of postfix operator
-                    let span = Span::new(expression.span.start, end);
+                    let span = Span::new(expr_start, end);
                     // Create and store a postfix expression using the already passed expression plus the postfix operator
                     expression = Node::new(
                         Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
@@ -2940,7 +2880,7 @@ impl<'a> Parser<'a> {
                     self.tokenizer.next_token()?;
                     // Calculate span of the entire postfix expression
                     // Span = Start of the previously parsed expression -> End of postfix operator
-                    let span = Span::new(expression.span.start, end);
+                    let span = Span::new(expr_start, end);
                     // Create and store a postfix expression using the already passed expression plus the postfix operator
                     expression = Node::new(
                         Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
@@ -2960,7 +2900,7 @@ impl<'a> Parser<'a> {
                         Some((TokenType::Identifier(identifier), id_start, id_end)) => {
                             // Calculate span of the entire postfix expression
                             // Span = Start of the previously parsed expression -> End of postfix operator
-                            let span = Span::new(expression.span.start, id_end);
+                            let span = Span::new(expr_start, id_end);
                             // Store the right member access operator
                             let operator = if token == TokenType::DotOperator {
                                 MemberOperator::Direct
@@ -3014,7 +2954,7 @@ impl<'a> Parser<'a> {
                     let (_, bracket_end) = self.accept_token(TokenType::CloseSquareBracket)?;
                     // Calculate span of the entire postfix expression
                     // Span = Start of the previously parsed expression -> End of postfix operator
-                    let span = Span::new(expression.span.start, bracket_end);
+                    let span = Span::new(expr_start, bracket_end);
                     // Create and return a BinaryOperatorExpression with Indexing `[]` as the binary operator
                     // And the already passed expression as the LHS and index_expr as RHS
                     expression = Node::new(
@@ -3036,7 +2976,7 @@ impl<'a> Parser<'a> {
 
                     // Calculate the span of the entire postfix expression
                     // Span = Start of the previously parsed expression -> End of Parenthesis
-                    let span = Span::new(expression.span.start, paren_end);
+                    let span = Span::new(expr_start, paren_end);
                     // Create and return a CallExpression with it's arguments
                     expression = Node::new(
                         Expression::Call(Box::new(CallExpression {
@@ -3059,6 +2999,168 @@ impl<'a> Parser<'a> {
             message: "Expected a postfix-expression, instead found end of file".to_string(),
             location: None,
         })
+    }
+
+    fn parse_postfix_expr(&mut self) -> Result<Node<Expression>, CompilerError> {
+        // postfix-expression:
+        //      primary-expression
+        //      postfix-expression [ expression ]
+        //      postfix-expression ( argument-expression-listopt )
+        //      postfix-expression . identifier
+        //      postfix-expression -> identifier
+        //      postfix-expression ++
+        //      postfix-expression --
+        //      ( type-name ) { initializer-list }
+        //      ( type-name ) { initializer-list , }
+        let expression = self.parse_primary_expr()?;
+
+        let expr_start = expression.span.start.clone();
+        self.parse_postfix_operators_with_init_expr(expression, expr_start)
+
+        // while let Some((token, start, end)) = self.tokenizer.peek_token()? {
+        //     match token {
+        //         TokenType::IncrementOperator => {
+        //             // Consume the `++`
+        //             self.tokenizer.next_token()?;
+        //             // Calculate span of the entire postfix expression
+        //             // Span = Start of the previously parsed expression -> End of postfix operator
+        //             let span = Span::new(expression.span.start, end);
+        //             // Create and store a postfix expression using the already passed expression plus the postfix operator
+        //             expression = Node::new(
+        //                 Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
+        //                     operator: Node::new(
+        //                         UnaryOperator::PostIncrement,
+        //                         Span::new(start, end),
+        //                     ),
+        //                     operand: expression,
+        //                 })),
+        //                 span,
+        //             );
+        //         }
+        //         TokenType::DecrementOperator => {
+        //             // Consume the `--`
+        //             self.tokenizer.next_token()?;
+        //             // Calculate span of the entire postfix expression
+        //             // Span = Start of the previously parsed expression -> End of postfix operator
+        //             let span = Span::new(expression.span.start, end);
+        //             // Create and store a postfix expression using the already passed expression plus the postfix operator
+        //             expression = Node::new(
+        //                 Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
+        //                     operator: Node::new(
+        //                         UnaryOperator::PostDecrement,
+        //                         Span::new(start, end),
+        //                     ),
+        //                     operand: expression,
+        //                 })),
+        //                 span,
+        //             );
+        //         }
+        //         TokenType::DotOperator | TokenType::ArrowOperator => {
+        //             self.tokenizer.next_token()?;
+        //             // Expect an identifier
+        //             match self.tokenizer.next_token()? {
+        //                 Some((TokenType::Identifier(identifier), id_start, id_end)) => {
+        //                     // Calculate span of the entire postfix expression
+        //                     // Span = Start of the previously parsed expression -> End of postfix operator
+        //                     let span = Span::new(expression.span.start, id_end);
+        //                     // Store the right member access operator
+        //                     let operator = if token == TokenType::DotOperator {
+        //                         MemberOperator::Direct
+        //                     } else {
+        //                         MemberOperator::Indirect
+        //                     };
+        //                     // Create and store a postfix expression using the already passed expression plus the postfix operator
+        //                     expression = Node::new(
+        //                         Expression::Member(Box::new(MemberExpression {
+        //                             operator: Node::new(operator, Span::new(start, end)),
+        //                             expression,
+        //                             identifier: Node::new(identifier, Span::new(id_start, id_end)),
+        //                         })),
+        //                         span,
+        //                     );
+        //                 }
+        //                 Some((unexpected, unexpected_start, _)) => {
+        //                     // This error will occur when there is no identifier specified after dot/arrow operator
+        //                     // struct_instance-> ;
+        //                     // struct_instance.  ;
+        //                     //                  ^ Missing identifiers
+        //                     return Err(CompilerError {
+        //                         kind: CompilerErrorKind::SyntaxError,
+        //                         message: format!(
+        //                             "Expected an identifier, instead got {:?}",
+        //                             unexpected
+        //                         ),
+        //                         location: Some(unexpected_start),
+        //                     });
+        //                 }
+        //                 None => {
+        //                     // This error will occur when there is an end of file and no identifier specified after dot/arrow operator
+        //                     // struct_instance->
+        //                     // struct_instance.
+        //                     //                  ^^ End of file, instead of identifiers
+        //                     return Err(CompilerError {
+        //                         kind: CompilerErrorKind::SyntaxError,
+        //                         message: "Expected an identifier, instead got end of file"
+        //                             .to_string(),
+        //                         location: None,
+        //                     });
+        //                 }
+        //             }
+        //         }
+        //         TokenType::OpenSquareBracket => {
+        //             // Consume the `[`
+        //             self.tokenizer.next_token()?;
+        //             // Parse the expression that will be used as index into the array
+        //             let index_expr = self.parse_expr()?;
+        //             // Accept a `]`
+        //             let (_, bracket_end) = self.accept_token(TokenType::CloseSquareBracket)?;
+        //             // Calculate span of the entire postfix expression
+        //             // Span = Start of the previously parsed expression -> End of postfix operator
+        //             let span = Span::new(expression.span.start, bracket_end);
+        //             // Create and return a BinaryOperatorExpression with Indexing `[]` as the binary operator
+        //             // And the already passed expression as the LHS and index_expr as RHS
+        //             expression = Node::new(
+        //                 Expression::BinaryOperator(Box::new(BinaryOperatorExpression {
+        //                     operator: Node::new(BinaryOperator::Index, Span::new(start, end)),
+        //                     lhs: expression,
+        //                     rhs: index_expr,
+        //                 })),
+        //                 span,
+        //             );
+        //         }
+        //         TokenType::OpenParenthesis => {
+        //             // Consume the `(`
+        //             self.tokenizer.next_token()?;
+        //             // Parse the Argument Expression List
+        //             let argument_expr_list = self.parse_argument_expression_list()?;
+        //             // Conume the `)`
+        //             let (_, paren_end) = self.accept_token(TokenType::CloseParenthesis)?;
+
+        //             // Calculate the span of the entire postfix expression
+        //             // Span = Start of the previously parsed expression -> End of Parenthesis
+        //             let span = Span::new(expression.span.start, paren_end);
+        //             // Create and return a CallExpression with it's arguments
+        //             expression = Node::new(
+        //                 Expression::Call(Box::new(CallExpression {
+        //                     callee: expression,
+        //                     argument_expr_list,
+        //                 })),
+        //                 span,
+        //             )
+        //         }
+        //         _ => {
+        //             // No need to modify the already parsed expression
+        //             // As there is no postfix operator to be taken care of
+        //             // Hence return the expression
+        //             return Ok(expression);
+        //         }
+        //     }
+        // }
+        // Err(CompilerError {
+        //     kind: CompilerErrorKind::SyntaxError,
+        //     message: "Expected a postfix-expression, instead found end of file".to_string(),
+        //     location: None,
+        // })
     }
 
     /// Iteratively parses argument expression list
