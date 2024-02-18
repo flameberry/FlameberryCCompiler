@@ -240,7 +240,7 @@ impl<'a> Tokenizer<'a> {
             let (_, bytes) = iter_while(temp_srcbuffer, |ch| ch != '\n');
             temp_srcbuffer = &temp_srcbuffer[bytes..];
 
-            let (_, leading_wbytes) = iter_while(self.srcbuffer, |ch| {
+            let (_, leading_wbytes) = iter_while(temp_srcbuffer, |ch| {
                 if ch == '\n' {
                     self.peeked_linerow += 1;
                     self.peeked_linecol = 1;

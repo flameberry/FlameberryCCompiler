@@ -71,5 +71,5 @@ fn main() {
     compile_file(testpath);
 
     let end = Instant::now() - start;
-    println!("Time taken: {:?}", end);
+    println!("Compilation took {:?}", end);
 }

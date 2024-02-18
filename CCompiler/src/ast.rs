@@ -2,9 +2,8 @@ use std::fmt;
 
 use debug_tree::*;
 
-use crate::errors::{CompilerError, CompilerErrorKind};
 use crate::node::{FileLocation, Node, Span};
-use crate::tokenizer::{FloatingPointType, IntegerType, Keyword, TokenType, Tokenizer};
+use crate::tokenizer::{FloatingPointType, IntegerType};
 
 #[derive(Debug, Clone)]
 pub enum TypeSpecifier {
