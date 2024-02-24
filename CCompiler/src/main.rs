@@ -67,7 +67,7 @@ fn main() {
     //     "/Users/flameberry/Developer/writing-a-c-compiler-tests/tests/chapter_3/invalid_parse";
     // run_tests(testpath);
 
-    let testpath = "Sandbox/test.c";
+    let testpath = "Sandbox/test_gen.c";
     compile_file(testpath);
 
     let end = Instant::now() - start;

@@ -1,10 +1,11 @@
 use crate::ast::display_translationunit;
-use crate::icg::AssemblyGenerator;
 use crate::parser::Parser;
 use crate::semantic_analyzer::SemanticAnalyzer;
+use crate::Assembly::AssemblyGenerator;
 use std::{
     fs::{self, File},
     io::Write,
+    path,
 };
 
 pub struct CompilerSpecification<'a> {
@@ -42,22 +43,37 @@ impl<'a> Compiler<'a> {
                 match SemanticAnalyzer::analyze(&translation_unit) {
                     Ok(()) => {
                         println!("Semantic Analysis was successful");
-                        true
-                        // match AssemblyGenerator::generate_assembly(&translation_unit) {
-                        //     Ok(assembly) => {
-                        //         println!("{}", assembly);
 
-                        //         // Write to assembly file
-                        //         let mut assemblyfile =
-                        //             File::create("Sandbox/fbcc_return_2.s").unwrap();
-                        //         assemblyfile.write_all(assembly.as_bytes()).unwrap();
-                        //         true
-                        //     }
-                        //     Err(err) => {
-                        //         println!("{}:{}", self.specification.target_file, err);
-                        //         false
-                        //     }
-                        // }
+                        // This `if` statement is for developer debugging convenience
+                        if true {
+                            // Create an instance of AssemblyGenerator
+                            let mut assembly_generator = AssemblyGenerator::new();
+
+                            // Generate assembly code from the translation unit
+                            match assembly_generator.generate_assembly(&translation_unit) {
+                                Ok(assembly) => {
+                                    println!("---------------------------------------");
+                                    println!("{}", assembly);
+                                    println!("---------------------------------------");
+
+                                    // Write to assembly file
+                                    // Derive the path by replacing the extension of the source file with .s
+                                    let assembly_file_path =
+                                        path::Path::new(self.specification.target_file)
+                                            .with_extension("s");
+                                    let mut assemblyfile =
+                                        File::create(assembly_file_path).unwrap();
+                                    assemblyfile.write_all(assembly.as_bytes()).unwrap();
+                                    true
+                                }
+                                Err(err) => {
+                                    println!("{}:{}", self.specification.target_file, err);
+                                    false
+                                }
+                            }
+                        } else {
+                            true
+                        }
                     }
                     Err(err) => {
                         println!("{}:{}", self.specification.target_file, err);

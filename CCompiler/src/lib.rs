@@ -1,7 +1,7 @@
+pub mod Assembly;
 pub mod ast;
 pub mod compiler;
 pub mod errors;
-pub mod icg;
 pub mod node;
 pub mod parser;
 pub mod preprocessor;
