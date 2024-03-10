@@ -1,7 +1,8 @@
-use crate::ast::display_translationunit;
-use crate::parser::Parser;
-use crate::semantic_analyzer::SemanticAnalyzer;
-use crate::Assembly::AssemblyGenerator;
+use crate::analysis::ast::display_translationunit;
+use crate::analysis::parser::Parser;
+use crate::analysis::semantic_analyzer::SemanticAnalyzer;
+use crate::synthesis::assembly::AssemblyGenerator;
+use crate::synthesis::tac::generate_tac;
 use std::{
     fs::{self, File},
     io::Write,
@@ -127,6 +128,22 @@ impl<'a> Compiler<'a> {
                 println!("{}:{}", self.specification.target_file, err);
                 false
             }
+        }
+    }
+}
+
+/// Returns true if the compilation succeeded else false
+pub fn compile(src: &str, srcpath: &str) -> bool {
+    let mut parser = Parser::new(src);
+    match parser.parse() {
+        Ok(translation_unit) => {
+            // println!("{:?}", translation_unit),
+            display_translationunit(&translation_unit);
+            true
+        }
+        Err(err) => {
+            println!("{}:{}", srcpath, err);
+            false
         }
     }
 }

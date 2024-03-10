@@ -2,8 +2,8 @@ use std::fmt;
 
 use debug_tree::*;
 
-use crate::node::{FileLocation, Node, Span};
-use crate::tokenizer::{FloatingPointType, IntegerType};
+use crate::analysis::node::{FileLocation, Node, Span};
+use crate::analysis::tokenizer::{FloatingPointType, IntegerType};
 
 #[derive(Debug, Clone)]
 pub enum TypeSpecifier {
@@ -44,8 +44,6 @@ pub enum Constant {
     Float(FloatingPointType),
     Character(char),
 }
-
-pub type StringLiteral = String;
 
 #[derive(Debug)]
 pub enum UnaryOperator {
@@ -186,7 +184,7 @@ pub struct CastExpression {
 pub enum Expression {
     Identifier(String), // TODO: This should be a pointer to the symbol table entry of the identifier
     Constant(Constant),
-    StringLiteral(StringLiteral),
+    StringLiteral(String),
     UnaryOperator(Box<UnaryOperatorExpression>),
     BinaryOperator(Box<BinaryOperatorExpression>),
     TernaryOperator(Box<TernaryOperatorExpression>),

@@ -1,7 +1,7 @@
 use core::fmt;
 use std::error::Error;
 
-use crate::node::FileLocation;
+use crate::analysis::node::FileLocation;
 
 #[derive(Debug)]
 pub enum CompilerErrorKind {

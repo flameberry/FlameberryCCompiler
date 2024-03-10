@@ -5,11 +5,11 @@
 //! The generated assembly code includes the necessary directives and labels for the main function.
 //! It also provides helper methods `generate_statement` and `generate_expression` to generate assembly code for statements and expressions, respectively.
 //! The module also defines the `IntegerType` enum, which represents different types of integer constants in the C language.
-//! This module is used by the C compiler to convert C code into assembly code.
+//! This module is used by the compiler to convert C code into assembly code.
 
-use crate::ast::*;
+use crate::analysis::ast::*;
+use crate::analysis::tokenizer::IntegerType;
 use crate::errors::CompilerError;
-use crate::tokenizer::IntegerType;
 
 /// Contains methods to generate traverse the AST (Abstract Syntax Tree) of a translation unit
 /// and calls methods for generation of assembly code from it.

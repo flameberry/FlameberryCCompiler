@@ -1,10 +1,10 @@
 //! Module for parsing the tokenized code into an AST tree according to the C17 standard.
 
+use crate::analysis::node::{FileLocation, Node, Span};
+use crate::analysis::tokenizer::{Keyword, TokenType, Tokenizer};
 use crate::errors::{CompilerError, CompilerErrorKind};
-use crate::node::{FileLocation, Node, Span};
-use crate::tokenizer::{Keyword, TokenType, Tokenizer};
 
-use crate::ast::*;
+use crate::analysis::ast::*;
 
 /// Maps TokenType::Keyword -> SpecifierQualifier
 fn keyword2specififerqualifier(keyword: &Keyword) -> Option<SpecifierQualifier> {

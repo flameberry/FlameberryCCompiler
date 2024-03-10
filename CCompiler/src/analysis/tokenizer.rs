@@ -1,7 +1,7 @@
 //! Module for performing lexical analysis on source code.
 use crate::{
+    analysis::node::FileLocation,
     errors::{CompilerError, CompilerErrorKind},
-    node::FileLocation,
 };
 
 use regex::Regex;

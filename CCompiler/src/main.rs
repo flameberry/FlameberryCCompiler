@@ -1,23 +1,5 @@
-use flameberrycc::ast::display_translationunit;
-use flameberrycc::compiler::{Compiler, CompilerSpecification};
-use flameberrycc::parser::Parser;
+use flameberrycc::compiler::{compile, Compiler, CompilerSpecification};
 use std::{fs, time::Instant};
-
-/// Returns true if the compilation succeeded else false
-fn compile(src: &str, srcpath: &str) -> bool {
-    let mut parser = Parser::new(src);
-    match parser.parse() {
-        Ok(translation_unit) => {
-            // println!("{:?}", translation_unit),
-            display_translationunit(&translation_unit);
-            true
-        }
-        Err(err) => {
-            println!("{}:{}", srcpath, err);
-            false
-        }
-    }
-}
 
 fn compile_file(srcpath: &str) {
     let specification = CompilerSpecification {

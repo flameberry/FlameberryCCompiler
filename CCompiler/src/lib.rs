@@ -1,9 +1,6 @@
-pub mod Assembly;
-pub mod ast;
+pub mod analysis;
 pub mod compiler;
 pub mod errors;
-pub mod node;
-pub mod parser;
 pub mod preprocessor;
-pub mod semantic_analyzer;
-pub mod tokenizer;
+pub mod symbol_table;
+pub mod synthesis;

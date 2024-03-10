@@ -1,8 +1,5 @@
-use crate::{
-    ast::*,
-    errors::{CompilerError, CompilerErrorKind},
-    node::Span,
-};
+use crate::analysis::{ast::*, node::Span};
+use crate::errors::{CompilerError, CompilerErrorKind};
 
 pub struct SemanticAnalyzer {}
 
