@@ -5,6 +5,7 @@ use crate::analysis::tokenizer::{Keyword, TokenType, Tokenizer};
 use crate::errors::{CompilerError, CompilerErrorKind};
 
 use crate::analysis::ast::*;
+use crate::typedefs::*;
 
 /// Maps TokenType::Keyword -> SpecifierQualifier
 fn keyword2specififerqualifier(keyword: &Keyword) -> Option<SpecifierQualifier> {
@@ -127,10 +128,8 @@ fn is_expr_unary(expression: &Expression) -> bool {
         | Expression::Alignof(_)
         | Expression::Member(_)
         | Expression::Call(_) => true,
-        Expression::Cast(_)
-        | Expression::BinaryOperator(_)
-        | Expression::TernaryOperator(_)
-        | Expression::Comma(_) => false,
+        Expression::Cast(_) | Expression::TernaryOperator(_) | Expression::Comma(_) => false,
+        Expression::BinaryOperator(expr) => expr.operator.node == BinaryOperator::Index,
     }
 }
 

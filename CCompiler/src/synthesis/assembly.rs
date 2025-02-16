@@ -8,8 +8,8 @@
 //! This module is used by the compiler to convert C code into assembly code.
 
 use crate::analysis::ast::*;
-use crate::analysis::tokenizer::IntegerType;
 use crate::errors::CompilerError;
+use crate::typedefs::*;
 
 /// Contains methods to generate traverse the AST (Abstract Syntax Tree) of a translation unit
 /// and calls methods for generation of assembly code from it.

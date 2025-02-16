@@ -1,9 +1,9 @@
-use std::fmt;
-
-use debug_tree::*;
-
-use crate::analysis::node::{FileLocation, Node, Span};
-use crate::analysis::tokenizer::{FloatingPointType, IntegerType};
+use {
+    crate::analysis::node::{FileLocation, Node, Span},
+    crate::typedefs::*,
+    debug_tree::*,
+    std::fmt,
+};
 
 #[derive(Debug, Clone)]
 pub enum TypeSpecifier {
@@ -39,13 +39,6 @@ pub enum StorageClassSpecifier {
 }
 
 #[derive(Debug)]
-pub enum Constant {
-    Integer(IntegerType),
-    Float(FloatingPointType),
-    Character(char),
-}
-
-#[derive(Debug)]
 pub enum UnaryOperator {
     /// `operand++`
     PostIncrement,
@@ -69,7 +62,7 @@ pub enum UnaryOperator {
     Negate,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOperator {
     /// `lhs[rhs]`
     Index,
@@ -389,6 +382,28 @@ impl fmt::Display for DeclarationSpecifier {
             DeclarationSpecifier::StorageClassSpecifier(storagespec) => {
                 write!(f, "StorageClassSpecifier -> {:?}", storagespec)
             }
+        }
+    }
+}
+
+impl fmt::Display for Constant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Constant::Integer(integer) => match integer {
+                IntegerType::Generic(val) => write!(f, "{}", val),
+                IntegerType::Signed(val) => write!(f, "{}", val),
+                IntegerType::SignedLong(val) => write!(f, "{}", val),
+                IntegerType::SignedLongLong(val) => write!(f, "{}", val),
+                IntegerType::Unsigned(val) => write!(f, "{}", val),
+                IntegerType::UnsignedLong(val) => write!(f, "{}", val),
+                IntegerType::UnsignedLongLong(val) => write!(f, "{}", val),
+            },
+            Constant::Float(float) => match float {
+                FloatingPointType::Double(val) => write!(f, "{}", val),
+                FloatingPointType::Float(val) => write!(f, "{}", val),
+                FloatingPointType::LongDouble(val) => write!(f, "{}", val),
+            },
+            Constant::Character(ch) => write!(f, "{}", ch),
         }
     }
 }

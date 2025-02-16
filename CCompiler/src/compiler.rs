@@ -1,8 +1,9 @@
 use crate::analysis::ast::display_translationunit;
 use crate::analysis::parser::Parser;
 use crate::analysis::semantic_analyzer::SemanticAnalyzer;
+use crate::symboltable::SymbolTable;
 use crate::synthesis::assembly::AssemblyGenerator;
-use crate::synthesis::tac::generate_tac;
+use crate::synthesis::tac::*;
 use std::{
     fs::{self, File},
     io::Write,
@@ -18,45 +19,19 @@ pub struct CompilerSpecification<'a> {
 
 pub struct Compiler<'a> {
     specification: CompilerSpecification<'a>,
+    symboltable: SymbolTable,
 }
 
 impl<'a> Compiler<'a> {
     /// Creates a new instance of the `Compiler` struct with the given `CompilerSpecification`.
-    ///
-    /// # Arguments
-    ///
-    /// * `specification` - The specification for the compiler.
-    ///
-    /// # Returns
-    ///
-    /// Returns a new `Compiler` instance.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// let specification = CompilerSpecification { target_file: "main.c" };
-    /// let compiler = Compiler::new(specification);
-    /// ```
     pub fn new(specification: CompilerSpecification<'a>) -> Self {
-        Compiler { specification }
+        Compiler {
+            specification,
+            symboltable: SymbolTable::new(),
+        }
     }
 
     /// Compiles the source file specified in the `CompilerSpecification`.
-    ///
-    /// # Returns
-    ///
-    /// Returns `true` if the compilation is successful, `false` otherwise.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// let specification = CompilerSpecification { target_file: "main.c" };
-    /// let compiler = Compiler::new(specification);
-    /// let result = compiler.compile();
-    /// ```
-    ///
-    /// # Panics
-    ///
     /// Panics if there is an error reading the source file.
     pub fn compile(&self) -> bool {
         // Read the source file
@@ -77,8 +52,26 @@ impl<'a> Compiler<'a> {
         // Parse the source file
         match parser.parse() {
             Ok(translation_unit) => {
+                println!(
+                    "\n-------------------------- Abstract Syntax Tree --------------------------"
+                );
+
                 // Display the parsed translation unit
                 display_translationunit(&translation_unit);
+
+                println!(
+                    "\n-------------------------- Three Address Code --------------------------"
+                );
+                let tac = generate_tac(&translation_unit).unwrap();
+                // println!("{:?}", tac);
+                let mut i = 0;
+                for instruction in tac.iter() {
+                    println!("({})\t{}", i, instruction);
+                    i += 1;
+                }
+
+                println!();
+                debug_assert!(false);
 
                 match SemanticAnalyzer::analyze(&translation_unit) {
                     Ok(()) => {
@@ -128,22 +121,6 @@ impl<'a> Compiler<'a> {
                 println!("{}:{}", self.specification.target_file, err);
                 false
             }
-        }
-    }
-}
-
-/// Returns true if the compilation succeeded else false
-pub fn compile(src: &str, srcpath: &str) -> bool {
-    let mut parser = Parser::new(src);
-    match parser.parse() {
-        Ok(translation_unit) => {
-            // println!("{:?}", translation_unit),
-            display_translationunit(&translation_unit);
-            true
-        }
-        Err(err) => {
-            println!("{}:{}", srcpath, err);
-            false
         }
     }
 }

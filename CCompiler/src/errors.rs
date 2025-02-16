@@ -5,6 +5,7 @@ use crate::analysis::node::FileLocation;
 
 #[derive(Debug)]
 pub enum CompilerErrorKind {
+    InternalError,
     TokenizerError,
     SyntaxError,
     SemanticError,
@@ -27,6 +28,9 @@ impl fmt::Display for CompilerError {
         };
 
         match self.kind {
+            CompilerErrorKind::InternalError => {
+                write!(f, "{}[Internal Error]: {}", prefix, self.message)
+            }
             CompilerErrorKind::TokenizerError => {
                 write!(f, "{}[Tokenizer Error]: {}", prefix, self.message)
             }
