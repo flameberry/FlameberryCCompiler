@@ -169,8 +169,14 @@ pub struct CallExpression {
 
 #[derive(Debug)]
 pub struct CastExpression {
-    pub typename: Node<TypeName>,
     pub expression: Node<Expression>,
+    pub typename: Node<TypeName>,
+}
+
+#[derive(Debug)]
+pub struct ImplicitCastExpression {
+    pub expression: Node<Expression>,
+    pub target_type: PrimitiveType,
 }
 
 #[derive(Debug)]
@@ -187,6 +193,7 @@ pub enum Expression {
     Member(Box<MemberExpression>),
     Call(Box<CallExpression>),
     Cast(Box<CastExpression>),
+    ImplicitCast(Box<ImplicitCastExpression>),
     Comma(Vec<Node<Expression>>),
 }
 
@@ -549,6 +556,18 @@ pub fn display_expr(expression: &Expression, span: &Span) {
             {
                 add_branch!("Typename");
                 display_typename(&cast_expr.typename);
+            }
+            {
+                add_branch!("Expression");
+                display_expr(&cast_expr.expression.node, &cast_expr.expression.span);
+            }
+        }
+        Expression::ImplicitCast(cast_expr) => {
+            add_branch!("ImplicitCastExpression {}", span);
+            {
+                add_branch!("CType");
+                // TODO: Implement proper printing of CTypes
+                add_leaf!("{:?}", cast_expr.target_type);
             }
             {
                 add_branch!("Expression");

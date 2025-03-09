@@ -1,24 +1,15 @@
 use std::collections::HashMap;
 
-use crate::analysis::tokenizer::TokenType;
+use crate::analysis::ast::StorageClassSpecifier;
 use crate::errors::{CompilerError, CompilerErrorKind};
-use crate::typedefs::Constant;
-
-#[derive(Debug, Clone)]
-pub enum SymbolType {
-    None,
-    Unknown,
-    Function,
-    Variable,
-    Label,
-}
+use crate::typedefs::{Constant, TypeInfo};
 
 #[derive(Debug, Clone)]
 pub struct SymbolDefinition {
-    tokentype: TokenType,
-    symboltype: SymbolType,
-    value: Option<Constant>,
-    scopeid: u32,
+    pub typeinfo: TypeInfo,
+    pub storageclass: Option<StorageClassSpecifier>,
+    pub value: Option<Constant>,
+    pub scopeid: u32,
 }
 
 #[derive(Debug)]
@@ -36,7 +27,7 @@ impl SymbolHashMapEntry {
         }
     }
 
-    fn bsearch(&self, scopeid: u32, symbolbuffer: &Vec<SymbolDefinition>) -> i32 {
+    fn bsearch(&self, scopeid: u32, symbolbuffer: &[SymbolDefinition]) -> i32 {
         let mut beg = 0;
         let mut end = self.depthsortedindices.len();
         let mut mid = (beg + end) / 2;
@@ -58,8 +49,8 @@ impl SymbolHashMapEntry {
         }
         println!("Probe count for searching symbol within scopes: {probecount}");
 
-        // Indicating that symbol definition within the given scopeid was not found
-        return -1;
+        // Return -1 indicating that symbol definition within the given scopeid was not found
+        -1
     }
 }
 
@@ -90,16 +81,13 @@ impl SymbolTable {
 
     /// Returns all symbols with the given name (Includes same symbol names from multiple scopes)
     pub fn lookup_all(&self, name: &str) -> Option<Vec<SymbolDefinition>> {
-        match self.hashmap.get(name) {
-            Some(entry) => Some(
-                entry
-                    .depthsortedindices
-                    .iter()
-                    .map(|idx| self.symbolbuffer[idx.clone() as usize].clone())
-                    .collect(),
-            ),
-            None => None,
-        }
+        self.hashmap.get(name).map(|entry| {
+            entry
+                .depthsortedindices
+                .iter()
+                .map(|idx| self.symbolbuffer[*idx as usize].clone())
+                .collect()
+        })
     }
 
     /// Insert a symbol into the table without checking whether it already exists
@@ -107,8 +95,8 @@ impl SymbolTable {
         &mut self,
         name: &str,
         scopeid: u32,
-        tokentype: TokenType,
-        symboltype: SymbolType,
+        typeinfo: TypeInfo,
+        storageclass: Option<StorageClassSpecifier>,
         value: Option<Constant>,
     ) {
         let index = self.symbolbuffer.len() as i32;
@@ -118,8 +106,8 @@ impl SymbolTable {
         self.hashmap.insert(name.to_string(), entry);
 
         self.symbolbuffer.push(SymbolDefinition {
-            tokentype,
-            symboltype,
+            typeinfo,
+            storageclass,
             value,
             scopeid,
         });
@@ -130,8 +118,8 @@ impl SymbolTable {
         &mut self,
         name: &str,
         scopeid: u32,
-        tokentype: TokenType,
-        symboltype: SymbolType,
+        typeinfo: TypeInfo,
+        storageclass: Option<StorageClassSpecifier>,
         value: Option<Constant>,
     ) -> Result<(), CompilerError> {
         match self.lookup(name, scopeid) {
@@ -145,7 +133,7 @@ impl SymbolTable {
             }),
             None => {
                 // Symbol doesn't exist so safely can be inserted
-                self.insert_unsafe(name, scopeid, tokentype, symboltype, value);
+                self.insert_unsafe(name, scopeid, typeinfo, storageclass, value);
                 Ok(())
             }
         }

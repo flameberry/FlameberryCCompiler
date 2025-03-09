@@ -127,8 +127,10 @@ fn is_expr_unary(expression: &Expression) -> bool {
         | Expression::SizeofVal(_)
         | Expression::Alignof(_)
         | Expression::Member(_)
-        | Expression::Call(_) => true,
-        Expression::Cast(_) | Expression::TernaryOperator(_) | Expression::Comma(_) => false,
+        | Expression::Call(_)
+        | Expression::Cast(_)
+        | Expression::ImplicitCast(_) => true,
+        Expression::TernaryOperator(_) | Expression::Comma(_) => false,
         Expression::BinaryOperator(expr) => expr.operator.node == BinaryOperator::Index,
     }
 }
@@ -151,113 +153,100 @@ impl<'a> Parser<'a> {
             external_declarations: Vec::new(),
         };
 
-        loop {
-            match self.tokenizer.peek_token()? {
-                Some(_) => {
-                    // Parse a Declaration
-                    // Irrespective of the next part of the program being a declaration or a function definition...
-                    // We need to parse some declaration-like code
-                    let declaration = self.parse_declaration()?;
+        while self.tokenizer.peek_token()?.is_some() {
+            // Parse a Declaration
+            // Irrespective of the next part of the program being a declaration or a function definition...
+            // We need to parse some declaration-like code
+            let declaration = self.parse_declaration()?;
 
-                    match self.tokenizer.next_token()? {
-                        Some((token, start, end)) => match token {
-                            TokenType::OpenBrace => {
-                                // In case of a function definition...
-                                // It is compulsory to have exactly 1 declarator which is the function declarator
-                                if declaration.init_declarators.len() != 1 {
-                                    return Err(CompilerError {
-                                        kind: CompilerErrorKind::SyntaxError,
-                                        message: "Unexpected `{`, expected a semicolon".to_string(),
-                                        location: Some(start),
-                                    });
-                                }
-
-                                // As it is confirmed by the previous if statement that there is only 1 declarator
-                                // We can grab it from the init declarator list
-                                let fdeclarator = &declaration
-                                    .init_declarators
-                                    .first()
-                                    .unwrap()
-                                    .node
-                                    .declarator;
-
-                                // Parse a function definition
-                                if let Declarator::FunctionDeclarator(fdecl) = &fdeclarator.node {
-                                    // A function body must be a compound statement
-                                    let funcbody = self.parse_compound_stmt()?;
-                                    // Consume the CloseBrace
-                                    let (_, brace_end) =
-                                        self.accept_token(TokenType::CloseBrace)?;
-
-                                    // Calculate the span of the function definition
-                                    // The span of the function definition is from the start of the declaration
-                                    // to the end of the definition, i.e., the CloseBrace end index
-                                    let declspan_start = declaration.specifiers[0].span.start;
-                                    let funcdef_span = Span::new(declspan_start, brace_end);
-
-                                    // Create and push the function definition that we just parsed
-                                    tranlation_unit.external_declarations.push(Node::new(
-                                        ExternalDeclaration::FunctionDefinition(
-                                            FunctionDefinition {
-                                                specifiers: declaration.specifiers,
-                                                declarator: Node::new(
-                                                    // Cloning here to avoid ownership issues
-                                                    // Will this be a performance overhead?
-                                                    fdecl.clone(),
-                                                    fdeclarator.span,
-                                                ),
-                                                body: funcbody,
-                                            },
-                                        ),
-                                        funcdef_span,
-                                    ));
-                                } else {
-                                    // If `{` is encountered, then it must be a function definition
-                                    // Reaching this line of code indicates the C code looks like this:
-                                    // const int variable_declaration{};
-                                    //                               ^^ Unexpected `{`
-                                    return Err(CompilerError {
-                                        kind: CompilerErrorKind::SyntaxError,
-                                        message: "Unexpected token: `{`, statement is not a valid function declaration".to_string(),
-                                        location: Some(start),
-                                    });
-                                }
-                            }
-                            TokenType::Semicolon => {
-                                // Calculate the span of the declaration
-                                // span = start of the first DeclarationSpecifier in the declaration -> end of the semicolon
-                                let declspan_start =
-                                    declaration.specifiers.first().unwrap().span.start; // Here we assume that a declaration will always have atleast one specifier
-                                let declspan = Span::new(declspan_start, end);
-
-                                // Create an ExternalDeclaration and push it
-                                tranlation_unit.external_declarations.push(Node::new(
-                                    ExternalDeclaration::Declaration(declaration),
-                                    declspan,
-                                ));
-                            }
-                            _ => {
-                                return Err(CompilerError {
-                                    kind: CompilerErrorKind::SyntaxError,
-                                    message: format!(
-                                        "Expected a `;` or `{{` instead got: {:?}",
-                                        token
-                                    ),
-                                    location: Some(start),
-                                })
-                            }
-                        },
-                        _ => {
+            match self.tokenizer.next_token()? {
+                Some((token, start, end)) => match token {
+                    TokenType::OpenBrace => {
+                        // In case of a function definition...
+                        // It is compulsory to have exactly 1 declarator which is the function declarator
+                        if declaration.init_declarators.len() != 1 {
                             return Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
-                                message: "Expected a `;` or `{` instead got end of file"
-                                    .to_string(),
-                                location: None,
-                            })
+                                message: "Unexpected `{`, expected a semicolon".to_string(),
+                                location: Some(start),
+                            });
+                        }
+
+                        // As it is confirmed by the previous if statement that there is only 1 declarator
+                        // We can grab it from the init declarator list
+                        let fdeclarator = &declaration
+                            .init_declarators
+                            .first()
+                            .unwrap()
+                            .node
+                            .declarator;
+
+                        // Parse a function definition
+                        if let Declarator::FunctionDeclarator(fdecl) = &fdeclarator.node {
+                            // A function body must be a compound statement
+                            let funcbody = self.parse_compound_stmt()?;
+                            // Consume the CloseBrace
+                            let (_, brace_end) = self.accept_token(TokenType::CloseBrace)?;
+
+                            // Calculate the span of the function definition
+                            // The span of the function definition is from the start of the declaration
+                            // to the end of the definition, i.e., the CloseBrace end index
+                            let declspan_start = declaration.specifiers[0].span.start;
+                            let funcdef_span = Span::new(declspan_start, brace_end);
+
+                            // Create and push the function definition that we just parsed
+                            tranlation_unit.external_declarations.push(Node::new(
+                                ExternalDeclaration::FunctionDefinition(FunctionDefinition {
+                                    specifiers: declaration.specifiers,
+                                    declarator: Node::new(
+                                        // Cloning here to avoid ownership issues
+                                        // Will this be a performance overhead?
+                                        fdecl.clone(),
+                                        fdeclarator.span,
+                                    ),
+                                    body: funcbody,
+                                }),
+                                funcdef_span,
+                            ));
+                        } else {
+                            // If `{` is encountered, then it must be a function definition
+                            // Reaching this line of code indicates the C code looks like this:
+                            // const int variable_declaration{};
+                            //                               ^^ Unexpected `{`
+                            return Err(CompilerError {
+                                kind: CompilerErrorKind::SyntaxError,
+                                message: "Unexpected token: `{`, statement is not a valid function declaration".to_string(),
+                                location: Some(start),
+                            });
                         }
                     }
+                    TokenType::Semicolon => {
+                        // Calculate the span of the declaration
+                        // span = start of the first DeclarationSpecifier in the declaration -> end of the semicolon
+                        let declspan_start = declaration.specifiers.first().unwrap().span.start; // Here we assume that a declaration will always have atleast one specifier
+                        let declspan = Span::new(declspan_start, end);
+
+                        // Create an ExternalDeclaration and push it
+                        tranlation_unit.external_declarations.push(Node::new(
+                            ExternalDeclaration::Declaration(declaration),
+                            declspan,
+                        ));
+                    }
+                    _ => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SyntaxError,
+                            message: format!("Expected a `;` or `{{` instead got: {:?}", token),
+                            location: Some(start),
+                        })
+                    }
+                },
+                _ => {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SyntaxError,
+                        message: "Expected a `;` or `{` instead got end of file".to_string(),
+                        location: None,
+                    })
                 }
-                None => break,
             }
         }
         // Return the entire translation unit AKA the root node of the parse tree
@@ -288,7 +277,7 @@ impl<'a> Parser<'a> {
                 TokenType::Identifier(identifier) => {
                     // Once we hit an identifier (we should always hit one, if the program is syntactically right)
                     // Parse the declarator
-                    if specifiers.len() != 0 {
+                    if !specifiers.is_empty() {
                         let init_declarator_list = self.parse_init_declarator_list()?;
                         return Ok(Declaration {
                             specifiers,
@@ -574,7 +563,7 @@ impl<'a> Parser<'a> {
                 TokenType::Identifier(identifier) => {
                     // Once we hit an identifier
                     // Parse the expected direct declarator (Function pointers will be handled in the future)
-                    if specifiers.len() != 0 {
+                    if !specifiers.is_empty() {
                         // Currently we only support DirectDeclarators in parameter declaration
                         let declarator = Node::new(
                             Declarator::DirectDeclarator(identifier),
@@ -615,7 +604,7 @@ impl<'a> Parser<'a> {
                 TokenType::Comma | TokenType::CloseParenthesis => {
                     // This line will be reached when no identifier has been reached yet
                     // But the next token seems to be either a , or ) which is the end of the parameter declaration
-                    if specifiers.len() != 0 {
+                    if !specifiers.is_empty() {
                         // Instead of reaching TokenType::Identifier we have reached a parameter end
                         // Hence make a FunctionParameter with no declarator
                         // This is the key difference between a normal declaration and a function parameter declaration
@@ -846,7 +835,7 @@ impl<'a> Parser<'a> {
                                     Some((token, peek_start, _)) => {
                                         // Check if the next token is a DeclarationSpecifier
                                         if let TokenType::Keyword(keyword) = token {
-                                            if let Some(_) = keyword2declspec(&keyword) {
+                                            if keyword2declspec(&keyword).is_some() {
                                                 // If yes, Expect a ForInitializer::Declaration
                                                 let declaration = self.parse_declaration()?;
 
@@ -1032,10 +1021,11 @@ impl<'a> Parser<'a> {
                                 // Calculate the span of the entire expression statement
                                 // Span = Start of the expression -> End of the semicolon
                                 let span = Span::new(start, semicolon_end);
-                                return Ok(Node::new(
+
+                                Ok(Node::new(
                                     Statement::ExpressionStatement(Some(expression)),
                                     span,
-                                ));
+                                ))
                             }
                             _ => Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
@@ -1087,10 +1077,11 @@ impl<'a> Parser<'a> {
                         // Calculate the span of the entire expression statement
                         // Span = Start of the expression -> End of the semicolon
                         let span = Span::new(start, semicolon_end);
-                        return Ok(Node::new(
+
+                        Ok(Node::new(
                             Statement::ExpressionStatement(Some(expression)),
                             span,
-                        ));
+                        ))
                     }
                     TokenType::OpenBrace => {
                         // Consume the OpenBrace
@@ -1126,10 +1117,11 @@ impl<'a> Parser<'a> {
                         // Calculate the span of the entire expression statement
                         // Span = Start of the expression -> End of the semicolon
                         let span = Span::new(start, semicolon_end);
-                        return Ok(Node::new(
+
+                        Ok(Node::new(
                             Statement::ExpressionStatement(Some(expression)),
                             span,
-                        ));
+                        ))
                     }
                 }
             }
@@ -1163,7 +1155,7 @@ impl<'a> Parser<'a> {
                     // The logic here is that a BlockItem can be either a declaration or a statement
                     // If it is a declaration then it should start with a DeclarationSpecifier
                     if let TokenType::Keyword(keyword) = token {
-                        if let Some(_) = keyword2declspec(&keyword) {
+                        if keyword2declspec(&keyword).is_some() {
                             is_declaration = true;
                             // Parse a declaration
                             let declaration = self.parse_declaration()?;
@@ -1226,7 +1218,7 @@ impl<'a> Parser<'a> {
         //      assignment-expression
         //      expression , assignment-expression
         let mut expressions: Vec<Node<Expression>> = Vec::new();
-        while let Some(_) = self.tokenizer.peek_token()? {
+        while self.tokenizer.peek_token()?.is_some() {
             let expression = self.parse_assignment_expr()?;
             expressions.push(expression);
 
@@ -1328,7 +1320,7 @@ impl<'a> Parser<'a> {
                 _ => Ok(expression),
             },
             None => {
-                return Err(CompilerError {
+                Err(CompilerError {
                     kind: CompilerErrorKind::SyntaxError,
                     message: "Expected expression, instead got end of file".to_string(),
                     location: None,
@@ -1814,7 +1806,7 @@ impl<'a> Parser<'a> {
 
             let mut is_typename = false;
             if let Some((TokenType::Keyword(keyword), _, _)) = self.tokenizer.peek_token()? {
-                if let Some(_) = keyword2declspec(&keyword) {
+                if keyword2declspec(&keyword).is_some() {
                     // Parse a typename
                     let typename = self.parse_type_name()?;
                     self.accept_token(TokenType::CloseParenthesis)?;
@@ -1829,7 +1821,7 @@ impl<'a> Parser<'a> {
                 let mut expression = self.parse_expr()?;
                 let (_, paren_end) = self.accept_token(TokenType::CloseParenthesis)?;
 
-                let expr_start = expression.span.start.clone();
+                let expr_start = expression.span.start;
                 expression = self.parse_postfix_operators_with_init_expr(expression, expr_start)?;
 
                 // Pop all the typenames and create cast expressions
@@ -1902,7 +1894,7 @@ impl<'a> Parser<'a> {
                     // TODO: Parse an abstract-declarator here
 
                     // Ensure that there is atleast one specifier-qualifier
-                    if specifier_qualifier_list.len() == 0 {
+                    if specifier_qualifier_list.is_empty() {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::SyntaxError,
                             message: "No specifier-qualifiers are present in type-name".to_string(),
@@ -1996,7 +1988,7 @@ impl<'a> Parser<'a> {
                             self.tokenizer.peek_token()?
                         {
                             // If Yes then check if the Keyword is a Specifier-Qualifier
-                            if let Some(_) = keyword2specififerqualifier(&keyword) {
+                            if keyword2specififerqualifier(&keyword).is_some() {
                                 // If Yes then it must be a type-name, so parse a type-name
                                 let type_name = self.parse_type_name()?;
                                 // Accept a `)`
@@ -2261,7 +2253,7 @@ impl<'a> Parser<'a> {
         //      ( type-name ) { initializer-list }
         //      ( type-name ) { initializer-list , }
         let expression = self.parse_primary_expr()?;
-        let expr_start = expression.span.start.clone();
+        let expr_start = expression.span.start;
         // Parse the postfix operators
         self.parse_postfix_operators_with_init_expr(expression, expr_start)
     }

@@ -5,14 +5,14 @@ fn compile_file(srcpath: &str) {
     let specification = CompilerSpecification {
         target_file: srcpath,
     };
-    let compiler = Compiler::new(specification);
+    let mut compiler = Compiler::new(specification);
     compiler.compile();
 }
 
 fn main() {
     let start = Instant::now();
 
-    let testpath = "Sandbox/test.c";
+    let testpath = "Sandbox/test_semantic.c";
     compile_file(testpath);
 
     let end = Instant::now() - start;

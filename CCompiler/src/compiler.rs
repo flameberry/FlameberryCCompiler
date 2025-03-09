@@ -33,7 +33,7 @@ impl<'a> Compiler<'a> {
 
     /// Compiles the source file specified in the `CompilerSpecification`.
     /// Panics if there is an error reading the source file.
-    pub fn compile(&self) -> bool {
+    pub fn compile(&mut self) -> bool {
         // Read the source file
         let src = fs::read_to_string(self.specification.target_file);
         println!("Compiling {}...", self.specification.target_file);
@@ -59,26 +59,27 @@ impl<'a> Compiler<'a> {
                 // Display the parsed translation unit
                 display_translationunit(&translation_unit);
 
-                println!(
-                    "\n-------------------------- Three Address Code --------------------------"
-                );
-                let tac = generate_tac(&translation_unit).unwrap();
-                // println!("{:?}", tac);
-                let mut i = 0;
-                for instruction in tac.iter() {
-                    println!("({})\t{}", i, instruction);
-                    i += 1;
-                }
+                let mut semantic_analyzer = SemanticAnalyzer::new(&mut self.symboltable);
 
-                println!();
-                debug_assert!(false);
-
-                match SemanticAnalyzer::analyze(&translation_unit) {
+                match semantic_analyzer.analyze(&translation_unit) {
                     Ok(()) => {
                         println!("Semantic Analysis was successful");
 
                         // This `if` statement is for developer debugging convenience, to toggle the assembly generation
                         if true {
+                            // Intermediate Code Generation
+                            println!(
+                                "\n-------------------------- Three Address Code --------------------------"
+                            );
+                            let tac = generate_tac(&translation_unit).unwrap();
+                            for (i, instruction) in tac.iter().enumerate() {
+                                println!("({})\t{}", i, instruction);
+                            }
+
+                            println!();
+
+                            // Code Generation
+
                             // Create an instance of AssemblyGenerator
                             let mut assembly_generator = AssemblyGenerator::new();
 
@@ -97,22 +98,22 @@ impl<'a> Compiler<'a> {
                                     let mut assemblyfile =
                                         File::create(assembly_file_path).unwrap();
                                     assemblyfile.write_all(assembly.as_bytes()).unwrap();
-                                    true
+                                    return true;
                                 }
                                 // If there is an error in the assembly generation, print the error and return false
                                 Err(err) => {
                                     println!("{}:{}", self.specification.target_file, err);
-                                    false
+                                    return false;
                                 }
                             }
                         } else {
-                            true
+                            return true;
                         }
                     }
                     // If there is an error in the semantic analysis, print the error and return false
                     Err(err) => {
                         println!("{}:{}", self.specification.target_file, err);
-                        false
+                        return false;
                     }
                 }
             }
