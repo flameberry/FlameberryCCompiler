@@ -57,13 +57,12 @@ impl<'a> SemanticAnalyzer<'a> {
 
     fn evaluate_declaration(&mut self, declaration: &Declaration) -> Result<(), CompilerError> {
         for init_decl in &declaration.init_declarators {
+            // 1. Convert set of declaration specifiers to an actual type
+            let declaration_type = TypeInfo::from_declaration_specifiers(&declaration.specifiers)?;
+
             if let Some(init_node) = &init_decl.node.initializer {
                 match &init_node.node {
                     Initializer::AssignmentExpression(asgn_expr) => {
-                        // 1. Convert set of declaration specifiers to an actual type
-                        let declaration_type =
-                            TypeInfo::from_declaration_specifiers(&declaration.specifiers)?;
-
                         // 2. Check if the expression type is compatible with the declaration type
                         match TypeInfo::compare(
                             &declaration_type,
@@ -80,23 +79,23 @@ impl<'a> SemanticAnalyzer<'a> {
                             }
                             _ => todo!(),
                         }
-
-                        // 3. Insert into the symbol table this declaration with it's details and scope ID
-                        match &init_decl.node.declarator.node {
-                            Declarator::DirectDeclarator(idname) => {
-                                self.symboltableref.insert(
-                                    idname,
-                                    *self.scopeidstack.last().unwrap(),
-                                    declaration_type,
-                                    None, // TODO: Add support for storage classifiers
-                                    None,
-                                )?;
-                            }
-                            Declarator::FunctionDeclarator(_) => {
-                                todo!()
-                            }
-                        }
                     }
+                }
+            }
+
+            // 3. Insert into the symbol table this declaration with it's details and scope ID
+            match &init_decl.node.declarator.node {
+                Declarator::DirectDeclarator(idname) => {
+                    self.symboltableref.insert(
+                        idname,
+                        *self.scopeidstack.last().unwrap(),
+                        declaration_type,
+                        None, // TODO: Add support for storage classifiers
+                        None,
+                    )?;
+                }
+                Declarator::FunctionDeclarator(_) => {
+                    todo!()
                 }
             }
         }

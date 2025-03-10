@@ -397,20 +397,22 @@ impl fmt::Display for Constant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Constant::Integer(integer) => match integer {
-                IntegerType::Generic(val) => write!(f, "{}", val),
-                IntegerType::Signed(val) => write!(f, "{}", val),
-                IntegerType::SignedLong(val) => write!(f, "{}", val),
-                IntegerType::SignedLongLong(val) => write!(f, "{}", val),
-                IntegerType::Unsigned(val) => write!(f, "{}", val),
-                IntegerType::UnsignedLong(val) => write!(f, "{}", val),
-                IntegerType::UnsignedLongLong(val) => write!(f, "{}", val),
+                IntegerType::Generic(val) => write!(f, "Generic Integer: {}", val),
+                IntegerType::Signed(val) => write!(f, "Signed Integer: {}", val),
+                IntegerType::SignedLong(val) => write!(f, "Signed Long Integer: {}", val),
+                IntegerType::SignedLongLong(val) => write!(f, "Signed Long Long Integer: {}", val),
+                IntegerType::Unsigned(val) => write!(f, "Unsigned Integer: {}", val),
+                IntegerType::UnsignedLong(val) => write!(f, "Unsigned Long Integer: {}", val),
+                IntegerType::UnsignedLongLong(val) => {
+                    write!(f, "Unsigned Long Long Integer: {}", val)
+                }
             },
             Constant::Float(float) => match float {
-                FloatingPointType::Double(val) => write!(f, "{}", val),
-                FloatingPointType::Float(val) => write!(f, "{}", val),
-                FloatingPointType::LongDouble(val) => write!(f, "{}", val),
+                FloatingPointType::Double(val) => write!(f, "Double: {}", val),
+                FloatingPointType::Float(val) => write!(f, "Float: {}", val),
+                FloatingPointType::LongDouble(val) => write!(f, "Long Double: {}", val),
             },
-            Constant::Character(ch) => write!(f, "{}", ch),
+            Constant::Character(ch) => write!(f, "Character: {}", ch),
         }
     }
 }

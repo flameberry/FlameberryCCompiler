@@ -322,6 +322,10 @@ impl<'a> Parser<'a> {
         // init-declarator-list:
         //      init-declarator
         //      init-declarator-list , init-declarator
+        //
+        // init-declarator:
+        //      declarator
+        //      declarator = initializer
 
         let mut init_declarators: Vec<Node<InitDeclarator>> = Vec::new();
         loop {
@@ -426,8 +430,9 @@ impl<'a> Parser<'a> {
     fn parse_declarator(&mut self) -> Result<Node<Declarator>, CompilerError> {
         // declarator:
         //      pointeropt direct-declarator
-        match self.tokenizer.next_token()? {
-            Some((token, start, end)) => match token {
+
+        if let Some((token, start, end)) = self.tokenizer.next_token()? {
+            match token {
                 TokenType::Identifier(identifier) => {
                     // Decide whether it's a function declarator or a direct declarator
                     match self.tokenizer.peek_token()? {
@@ -446,21 +451,21 @@ impl<'a> Parser<'a> {
                             let fdeclarator_end = if let Some(param) = fdeclarator.parameters.last() { param.span.end } else { end };
 
                             // Return the final function declarator node
-                            Ok(Node::new(
+                            return Ok(Node::new(
                                 Declarator::FunctionDeclarator(fdeclarator),
                                 Span::new(start, fdeclarator_end),
-                            ))
+                            ));
                         },
-                        Some((TokenType::Semicolon | TokenType::Comma | TokenType::Equals, _, _)) => Ok(Node::new(
+                        Some((TokenType::Semicolon | TokenType::Comma | TokenType::Equals, _, _)) => return Ok(Node::new(
                             Declarator::DirectDeclarator(identifier),
                             Span::new(start, end),
                         )),
-                        Some((next, start, _)) => Err(CompilerError{
+                        Some((next, start, _)) => return Err(CompilerError{
                             kind: CompilerErrorKind::SyntaxError,
                             message: format!("Unexpected token: {:?}, expected a `(` (Function Declarator), or `;` (Direct Declarator)", next),
                             location: Some(start)
                         }),
-                        None => Err(CompilerError{
+                        None => return Err(CompilerError{
                             kind: CompilerErrorKind::SyntaxError,
                             message: "Unexpected token, expected a `(` (Function Declarator), or `;` (Direct Declarator), instead encountered an End of File".to_string(),
                             location: None
@@ -468,9 +473,9 @@ impl<'a> Parser<'a> {
                     }
                 }
                 _ => panic!("Internal Error: Expected Identifier, but found no token!"),
-            },
-            None => panic!("Internal Error: Expected Identifier, but found no token!"),
+            }
         }
+        panic!("Internal Error: Expected Identifier, but found no token!");
     }
 
     fn parse_direct_declarator(&mut self) {
