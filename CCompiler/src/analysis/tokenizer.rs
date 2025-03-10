@@ -489,7 +489,7 @@ impl<'a> Tokenizer<'a> {
                                     number.as_str().parse::<f64>().unwrap(),
                                 ),
                             };
-                            return Ok((TokenType::FloatingPoint(fptype), captures[0].len()));
+                            Ok((TokenType::FloatingPoint(fptype), captures[0].len()))
                         } else {
                             // Else it is a integer constant
                             let inttype = match captures.name("suffix") {
@@ -526,7 +526,7 @@ impl<'a> Tokenizer<'a> {
                                     IntegerType::Generic(number.as_str().parse::<i64>().unwrap())
                                 }
                             };
-                            return Ok((TokenType::Integer(inttype), captures[0].len()));
+                            Ok((TokenType::Integer(inttype), captures[0].len()))
                         }
                     }
                     None => panic!("Internal Error: `number` part of the regex is not captured"),

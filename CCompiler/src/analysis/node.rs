@@ -1,4 +1,4 @@
-use std::{fmt, ops::Add, usize};
+use std::{fmt, ops::Add};
 
 #[derive(Debug, Copy, Clone)]
 pub struct FileLocation {

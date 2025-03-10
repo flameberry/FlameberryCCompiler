@@ -1,7 +1,7 @@
 use crate::analysis::{ast::*, node::Span};
 use crate::errors::{CompilerError, CompilerErrorKind};
 use crate::symboltable::SymbolTable;
-use crate::typedefs::{PrimitiveType, TypeCompatibility, TypeInfo};
+use crate::typedefs::{BaseType, Type, TypeCompatibility};
 
 // TODOS: Store the scope ID somewhere in the AST probably
 // ...to ensure that every time we need to find a symbol from the AST we can lookup using the scope ID
@@ -58,16 +58,17 @@ impl<'a> SemanticAnalyzer<'a> {
     fn evaluate_declaration(&mut self, declaration: &Declaration) -> Result<(), CompilerError> {
         for init_decl in &declaration.init_declarators {
             // 1. Convert set of declaration specifiers to an actual type
-            let declaration_type = TypeInfo::from_declaration_specifiers(&declaration.specifiers)?;
+            let (declaration_type, storage_class) =
+                Type::from_declaration_specifiers(&declaration.specifiers)?;
 
             if let Some(init_node) = &init_decl.node.initializer {
                 match &init_node.node {
                     Initializer::AssignmentExpression(asgn_expr) => {
+                        // Evaluate the Type of the assignment expression
+                        let rhs_typeinfo = self.evaluate_expr(asgn_expr, &init_node.span)?;
+
                         // 2. Check if the expression type is compatible with the declaration type
-                        match TypeInfo::compare(
-                            &declaration_type,
-                            &self.evaluate_expr(asgn_expr, &init_node.span)?,
-                        ) {
+                        match Type::compare(&declaration_type, &rhs_typeinfo) {
                             TypeCompatibility::Identical => {}
                             TypeCompatibility::Incompatible => {
                                 return Err(CompilerError {
@@ -90,7 +91,7 @@ impl<'a> SemanticAnalyzer<'a> {
                         idname,
                         *self.scopeidstack.last().unwrap(),
                         declaration_type,
-                        None, // TODO: Add support for storage classifiers
+                        storage_class,
                         None,
                     )?;
                 }
@@ -102,11 +103,7 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    fn evaluate_expr(
-        &self,
-        expression: &Expression,
-        span: &Span,
-    ) -> Result<TypeInfo, CompilerError> {
+    fn evaluate_expr(&self, expression: &Expression, span: &Span) -> Result<Type, CompilerError> {
         // Tasks to be performed:
         // 1. Check whether any variables used in expression are defined in the symbol table
         // 2. Check whether the type of the variables is compatible with each other
@@ -124,7 +121,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     self.evaluate_expr(&binary_expr.rhs.node, &binary_expr.rhs.span)?;
 
                 // 2. Get Common Type between the operands
-                match TypeInfo::compare(&lhs_typeinfo, &rhs_typeinfo) {
+                match Type::compare(&lhs_typeinfo, &rhs_typeinfo) {
                     TypeCompatibility::Identical => {}
                     TypeCompatibility::Incompatible => {
                         return Err(CompilerError {
@@ -161,7 +158,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     }),
                 }
             }
-            Expression::Constant(constant) => Ok(PrimitiveType::from_constant(constant)),
+            Expression::Constant(constant) => Ok(BaseType::from_constant(constant)),
             Expression::Comma(comma_exprs) => {
                 assert!(
                     !comma_exprs.is_empty(),
@@ -187,7 +184,7 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 
     /// Returns the operand type that is expected for the given binary operator
-    fn get_binary_operand_type(operator: BinaryOperator) -> Option<PrimitiveType> {
+    fn get_binary_operand_type(operator: BinaryOperator) -> Option<BaseType> {
         todo!()
     }
 }

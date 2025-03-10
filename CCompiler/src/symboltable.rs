@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::analysis::ast::StorageClassSpecifier;
+use crate::analysis::ast::{StorageClassFlags, StorageClassSpecifier};
 use crate::errors::{CompilerError, CompilerErrorKind};
-use crate::typedefs::{Constant, TypeInfo};
+use crate::typedefs::{Constant, Type};
 
 #[derive(Debug, Clone)]
 pub struct SymbolDefinition {
-    pub typeinfo: TypeInfo,
-    pub storageclass: Option<StorageClassSpecifier>,
+    pub typeinfo: Type,
+    pub storageclass: StorageClassFlags,
     pub value: Option<Constant>,
     pub scopeid: u32,
 }
@@ -96,8 +96,8 @@ impl SymbolTable {
         &mut self,
         name: &str,
         scopeid: u32,
-        typeinfo: TypeInfo,
-        storageclass: Option<StorageClassSpecifier>,
+        typeinfo: Type,
+        storageclass: StorageClassFlags,
         value: Option<Constant>,
     ) {
         let index = self.symbolbuffer.len() as i32;
@@ -119,8 +119,8 @@ impl SymbolTable {
         &mut self,
         name: &str,
         scopeid: u32,
-        typeinfo: TypeInfo,
-        storageclass: Option<StorageClassSpecifier>,
+        typeinfo: Type,
+        storageclass: StorageClassFlags,
         value: Option<Constant>,
     ) -> Result<(), CompilerError> {
         match self.lookup(name, scopeid) {
@@ -162,10 +162,7 @@ impl fmt::Display for SymbolTable {
                     "{0: <20} | {1: <20} | {2: <20} | {3: <20} | {4: <20}",
                     symbolname,
                     symbol.typeinfo.to_string(),
-                    symbol
-                        .storageclass
-                        .as_ref()
-                        .map_or("None".to_string(), |s| s.to_string()),
+                    format!("{:b}", symbol.storageclass),
                     symbol
                         .value
                         .as_ref()

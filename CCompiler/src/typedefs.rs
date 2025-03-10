@@ -1,6 +1,8 @@
 use std::fmt;
 
-use crate::analysis::ast::{DeclarationSpecifier, StorageClassSpecifier, TypeName, TypeQualifier, TypeSpecifier};
+use crate::analysis::ast::{
+    DeclarationSpecifier, StorageClassFlags, TypeName, TypeQualifier, TypeSpecifier,
+};
 use crate::analysis::node::Node;
 use crate::errors::{CompilerError, CompilerErrorKind};
 
@@ -31,7 +33,7 @@ pub enum Constant {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub enum PrimitiveType {
+pub enum BaseType {
     #[default]
     Void,
 
@@ -58,38 +60,38 @@ pub enum PrimitiveType {
 
     // Complex Types
     Pointer {
-        inner: Box<TypeInfo>,
+        inner: Box<Type>,
     },
     Array {
-        element_type: Box<TypeInfo>,
+        element_type: Box<Type>,
         size: Option<usize>,
     },
     Function {
-        return_type: Box<TypeInfo>,
-        parameters: Vec<TypeInfo>,
+        return_type: Box<Type>,
+        parameters: Vec<Type>,
         is_variadic: bool,
     },
     Struct {
         name: String,
-        fields: Vec<(String, TypeInfo)>,
+        fields: Vec<(String, Type)>,
     },
     Union {
         name: String,
-        fields: Vec<(String, TypeInfo)>,
+        fields: Vec<(String, Type)>,
     },
     Enum {
         name: String,
-        underlying_type: Box<TypeInfo>,
+        underlying_type: Box<Type>,
     },
     Typedef {
         name: String,
-        actual_type: Box<TypeInfo>,
+        actual_type: Box<Type>,
     },
 }
 
-impl PrimitiveType {
+impl BaseType {
     /// Get the type for a constant value
-    pub fn from_constant(constant: &Constant) -> TypeInfo {
+    pub fn from_constant(constant: &Constant) -> Type {
         match constant {
             Constant::Integer(int_type) => {
                 match int_type {
@@ -97,51 +99,47 @@ impl PrimitiveType {
                         // Infer the smallest type that can hold the value
                         if *val >= 0 {
                             if *val <= i32::MAX as i64 {
-                                TypeInfo::new(PrimitiveType::Int { signed: true })
+                                Type::new(BaseType::Int { signed: true })
                             } else if *val <= i64::MAX {
-                                TypeInfo::new(PrimitiveType::Long { signed: true })
+                                Type::new(BaseType::Long { signed: true })
                             } else {
-                                TypeInfo::new(PrimitiveType::LongLong { signed: true })
+                                Type::new(BaseType::LongLong { signed: true })
                             }
                         } else {
                             if *val >= i32::MIN as i64 {
-                                TypeInfo::new(PrimitiveType::Int { signed: true })
+                                Type::new(BaseType::Int { signed: true })
                             } else if *val >= i64::MIN {
-                                TypeInfo::new(PrimitiveType::Long { signed: true })
+                                Type::new(BaseType::Long { signed: true })
                             } else {
-                                TypeInfo::new(PrimitiveType::LongLong { signed: true })
+                                Type::new(BaseType::LongLong { signed: true })
                             }
                         }
                     }
-                    IntegerType::Signed(_) => TypeInfo::new(PrimitiveType::Int { signed: true }),
-                    IntegerType::SignedLong(_) => {
-                        TypeInfo::new(PrimitiveType::Long { signed: true })
-                    }
+                    IntegerType::Signed(_) => Type::new(BaseType::Int { signed: true }),
+                    IntegerType::SignedLong(_) => Type::new(BaseType::Long { signed: true }),
                     IntegerType::SignedLongLong(_) => {
-                        TypeInfo::new(PrimitiveType::LongLong { signed: true })
+                        Type::new(BaseType::LongLong { signed: true })
                     }
-                    IntegerType::Unsigned(_) => TypeInfo::new(PrimitiveType::Int { signed: false }),
-                    IntegerType::UnsignedLong(_) => {
-                        TypeInfo::new(PrimitiveType::Long { signed: false })
-                    }
+                    IntegerType::Unsigned(_) => Type::new(BaseType::Int { signed: false }),
+                    IntegerType::UnsignedLong(_) => Type::new(BaseType::Long { signed: false }),
                     IntegerType::UnsignedLongLong(_) => {
-                        TypeInfo::new(PrimitiveType::LongLong { signed: false })
+                        Type::new(BaseType::LongLong { signed: false })
                     }
                 }
             }
             Constant::Float(float_type) => match float_type {
-                FloatingPointType::Float(_) => TypeInfo::new(PrimitiveType::Float),
-                FloatingPointType::Double(_) => TypeInfo::new(PrimitiveType::Double),
-                FloatingPointType::LongDouble(_) => TypeInfo::new(PrimitiveType::LongDouble),
+                FloatingPointType::Float(_) => Type::new(BaseType::Float),
+                FloatingPointType::Double(_) => Type::new(BaseType::Double),
+                FloatingPointType::LongDouble(_) => Type::new(BaseType::LongDouble),
             },
-            Constant::Character(_) => TypeInfo::new(PrimitiveType::Char { signed: true }),
+            Constant::Character(_) => Type::new(BaseType::Char { signed: true }),
         }
     }
 
     // Check if this type can represent the given constant
     pub fn can_represent(&self, constant: &Constant) -> bool {
         match (self, constant) {
-            (PrimitiveType::Int { signed }, Constant::Integer(IntegerType::Generic(val))) => {
+            (BaseType::Int { signed }, Constant::Integer(IntegerType::Generic(val))) => {
                 if *signed {
                     *val >= i32::MIN as i64 && *val <= i32::MAX as i64
                 } else {
@@ -166,22 +164,22 @@ pub enum TypeCompatibility {
     Identical,
     Compatible,
     ImplicitConversion {
-        source: TypeInfo,
-        target: TypeInfo,
+        source: Type,
+        target: Type,
         potential_data_loss: bool,
     },
     Incompatible,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub struct TypeInfo {
-    pub base_type: PrimitiveType,
+pub struct Type {
+    pub base_type: BaseType,
     pub qualifiers: TypeQualifiers,
 }
 
-impl TypeInfo {
-    pub fn new(base_type: PrimitiveType) -> Self {
-        TypeInfo {
+impl Type {
+    pub fn new(base_type: BaseType) -> Self {
+        Type {
             base_type,
             qualifiers: TypeQualifiers::default(),
         }
@@ -197,12 +195,17 @@ impl TypeInfo {
 
     pub fn from_declaration_specifiers(
         declaration_specifiers: &[Node<DeclarationSpecifier>],
-    ) -> Result<Self, CompilerError> {
+    ) -> Result<(Self, StorageClassFlags), CompilerError> {
         let mut signed_keyword = false;
         let mut unsigned_keyword = false;
+        let mut base_type_encountered = false;
         let mut typeinfo = Self::default();
+        let mut storageclass: u8 = 0;
+        let mut is_type_long_compatible = false;
+        let mut long_count = 0;
+        let mut is_double = false;
 
-        for (i, decl_spec) in declaration_specifiers.iter().enumerate() {
+        for decl_spec in declaration_specifiers.iter() {
             match &decl_spec.node {
                 DeclarationSpecifier::TypeQualifier(qualifier) => match qualifier {
                     TypeQualifier::Const => typeinfo.qualifiers.is_const = true,
@@ -210,6 +213,9 @@ impl TypeInfo {
                     TypeQualifier::Atomic => typeinfo.qualifiers.is_atomic = true,
                     TypeQualifier::Restrict => typeinfo.qualifiers.is_restrict = true,
                 },
+                DeclarationSpecifier::StorageClassSpecifier(storage_class_specifier) => {
+                    storageclass |= *storage_class_specifier as u8;
+                }
                 DeclarationSpecifier::TypeSpecifier(specifier) => match specifier {
                     TypeSpecifier::Signed => {
                         // Disallow multiple signed keywords
@@ -235,48 +241,55 @@ impl TypeInfo {
                     }
 
                     _ => {
+                        // This means that base type keyword like int, float, double, char has been
+                        // encountered, because without this the type is incomplete
+                        base_type_encountered = true;
+
                         match specifier {
-                            TypeSpecifier::Void => typeinfo.base_type = PrimitiveType::Void,
-                            TypeSpecifier::Bool => typeinfo.base_type = PrimitiveType::Bool,
+                            TypeSpecifier::Void => typeinfo.base_type = BaseType::Void,
+                            TypeSpecifier::Bool => typeinfo.base_type = BaseType::Bool,
                             TypeSpecifier::Char => {
-                                typeinfo.base_type = PrimitiveType::Char {
+                                typeinfo.base_type = BaseType::Char {
                                     signed: !unsigned_keyword,
                                 }
                             }
                             TypeSpecifier::Short => {
-                                typeinfo.base_type = PrimitiveType::Short {
+                                typeinfo.base_type = BaseType::Short {
                                     signed: !unsigned_keyword,
                                 }
                             }
-                            TypeSpecifier::Int => {
-                                typeinfo.base_type = PrimitiveType::Int {
-                                    signed: !unsigned_keyword,
-                                }
-                            }
-                            TypeSpecifier::Long => {
-                                typeinfo.base_type = PrimitiveType::Long {
-                                    signed: !unsigned_keyword,
-                                }
-                            }
-                            TypeSpecifier::Float => typeinfo.base_type = PrimitiveType::Float,
-                            TypeSpecifier::Double => typeinfo.base_type = PrimitiveType::Double,
+                            TypeSpecifier::Float => typeinfo.base_type = BaseType::Float,
 
                             // This is never possible so basically dead code
                             TypeSpecifier::Signed | TypeSpecifier::Unsigned => unreachable!(),
 
                             // Yet to handle type specifiers like Complex
-                            _ => todo!(),
-                        }
+                            TypeSpecifier::Complex => todo!(),
 
-                        if i != declaration_specifiers.len() - 1 {
-                            return Err(CompilerError {
-                                kind: CompilerErrorKind::SemanticError,
-                                message: format!("Unexpected declaration specifier after the base type specifier: {:?}", typeinfo.base_type),
-                                location: Some(declaration_specifiers[i + 1].span.start) 
-                            })  
-                        }
-                        else {
-                            return Ok(typeinfo);
+                            // Long Compatible types are handled specially as there are different
+                            // variations to long it which are allowed by C language like having:
+                            // int long long var;
+                            // long int long var;
+                            // long long int var;
+                            TypeSpecifier::Int | TypeSpecifier::Long | TypeSpecifier::Double => {
+                                is_type_long_compatible = true;
+
+                                match specifier {
+                                    TypeSpecifier::Long => long_count += 1,
+
+                                    TypeSpecifier::Int => {
+                                        typeinfo.base_type = BaseType::Int {
+                                            signed: !unsigned_keyword,
+                                        }
+                                    }
+
+                                    TypeSpecifier::Double => {
+                                        is_double = true;
+                                        typeinfo.base_type = BaseType::Double
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
                         }
                     }
                 },
@@ -284,14 +297,62 @@ impl TypeInfo {
             }
         }
 
-        Err(CompilerError {
-            kind: CompilerErrorKind::SemanticError,
-            message: "Missing primitive type specifier".to_string(),
-            location: Some(declaration_specifiers.first().unwrap().span.start)
-        })
+        if is_type_long_compatible {
+            typeinfo.base_type = match long_count {
+                0 => {
+                    if is_double {
+                        BaseType::Double // double x;
+                    } else {
+                        BaseType::Int {
+                            signed: !unsigned_keyword,
+                        } // int x;
+                    }
+                }
+                1 => {
+                    if is_double {
+                        BaseType::LongDouble // long double x;
+                    } else {
+                        BaseType::Long {
+                            signed: !unsigned_keyword,
+                        } // long int x;
+                    }
+                }
+                2 => {
+                    if is_double {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SemanticError,
+                            message: "long long double is an invalid type.".to_string(),
+                            location: Some(declaration_specifiers.first().unwrap().span.start),
+                        }); // long long double x; <-- Not Allowed
+                    } else {
+                        BaseType::LongLong {
+                            signed: !unsigned_keyword,
+                        } // long long int x;
+                    }
+                }
+                _ => {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SemanticError,
+                        message: "Invalid declaration containing more than 2 long specifiers."
+                            .to_string(),
+                        location: Some(declaration_specifiers.first().unwrap().span.start),
+                    }); // long long long x;
+                }
+            }
+        }
+
+        if base_type_encountered {
+            Ok((typeinfo, storageclass))
+        } else {
+            Err(CompilerError {
+                kind: CompilerErrorKind::SemanticError,
+                message: "Missing primitive type specifier".to_string(),
+                location: Some(declaration_specifiers.first().unwrap().span.start),
+            })
+        }
     }
 
-    pub fn compare(x: &TypeInfo, y: &TypeInfo) -> TypeCompatibility {
+    pub fn compare(x: &Type, y: &Type) -> TypeCompatibility {
         if x == y {
             TypeCompatibility::Identical
         } else {
@@ -303,16 +364,15 @@ impl TypeInfo {
     }
 
     // Helper method to create a pointer to this type
-    pub fn pointer_to(self) -> TypeInfo {
-        TypeInfo {
-            base_type: PrimitiveType::Pointer {
+    pub fn pointer_to(self) -> Type {
+        Type {
+            base_type: BaseType::Pointer {
                 inner: Box::new(self),
             },
             qualifiers: TypeQualifiers::default(),
         }
     }
 }
-
 
 // ----------------------------------------- Display Implementations for the above structs -----------------------------------------
 
@@ -335,25 +395,41 @@ impl fmt::Display for TypeQualifiers {
     }
 }
 
-impl fmt::Display for PrimitiveType {
+impl fmt::Display for BaseType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            PrimitiveType::Void => write!(f, "void"),
-            PrimitiveType::Bool => write!(f, "bool"),
-            PrimitiveType::Char { signed } => write!(f, "{}char", if *signed { "signed " } else { "unsigned " }),
-            PrimitiveType::Short { signed } => write!(f, "{}short", if *signed { "signed " } else { "unsigned " }),
-            PrimitiveType::Int { signed } => write!(f, "{}int", if *signed { "signed " } else { "unsigned " }),
-            PrimitiveType::Long { signed } => write!(f, "{}long", if *signed { "signed " } else { "unsigned " }),
-            PrimitiveType::LongLong { signed } => write!(f, "{}long long", if *signed { "signed " } else { "unsigned " }),
-            PrimitiveType::Float => write!(f, "float"),
-            PrimitiveType::Double => write!(f, "double"),
-            PrimitiveType::LongDouble => write!(f, "long double"),
-            PrimitiveType::Pointer { inner } => write!(f, "*{}", inner),
-            PrimitiveType::Array { element_type, size } => match size {
+            BaseType::Void => write!(f, "void"),
+            BaseType::Bool => write!(f, "bool"),
+            BaseType::Char { signed } => {
+                write!(f, "{}char", if *signed { "signed " } else { "unsigned " })
+            }
+            BaseType::Short { signed } => {
+                write!(f, "{}short", if *signed { "signed " } else { "unsigned " })
+            }
+            BaseType::Int { signed } => {
+                write!(f, "{}int", if *signed { "signed " } else { "unsigned " })
+            }
+            BaseType::Long { signed } => {
+                write!(f, "{}long", if *signed { "signed " } else { "unsigned " })
+            }
+            BaseType::LongLong { signed } => write!(
+                f,
+                "{}long long",
+                if *signed { "signed " } else { "unsigned " }
+            ),
+            BaseType::Float => write!(f, "float"),
+            BaseType::Double => write!(f, "double"),
+            BaseType::LongDouble => write!(f, "long double"),
+            BaseType::Pointer { inner } => write!(f, "*{}", inner),
+            BaseType::Array { element_type, size } => match size {
                 Some(s) => write!(f, "{}[{}]", element_type, s),
                 None => write!(f, "{}[]", element_type),
             },
-            PrimitiveType::Function { return_type, parameters, is_variadic } => {
+            BaseType::Function {
+                return_type,
+                parameters,
+                is_variadic,
+            } => {
                 let params: Vec<String> = parameters.iter().map(|p| format!("{}", p)).collect();
                 let params_str = if *is_variadic {
                     format!("{}, ...", params.join(", "))
@@ -362,21 +438,32 @@ impl fmt::Display for PrimitiveType {
                 };
                 write!(f, "{}({})", return_type, params_str)
             }
-            PrimitiveType::Struct { name, fields } => {
-                let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{}: {}", n, t)).collect();
+            BaseType::Struct { name, fields } => {
+                let fields_str: Vec<String> = fields
+                    .iter()
+                    .map(|(n, t)| format!("{}: {}", n, t))
+                    .collect();
                 write!(f, "struct {} {{ {} }}", name, fields_str.join("; "))
             }
-            PrimitiveType::Union { name, fields } => {
-                let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{}: {}", n, t)).collect();
+            BaseType::Union { name, fields } => {
+                let fields_str: Vec<String> = fields
+                    .iter()
+                    .map(|(n, t)| format!("{}: {}", n, t))
+                    .collect();
                 write!(f, "union {} {{ {} }}", name, fields_str.join("; "))
             }
-            PrimitiveType::Enum { name, underlying_type } => write!(f, "enum {} : {}", name, underlying_type),
-            PrimitiveType::Typedef { name, actual_type } => write!(f, "typedef {} = {}", name, actual_type),
+            BaseType::Enum {
+                name,
+                underlying_type,
+            } => write!(f, "enum {} : {}", name, underlying_type),
+            BaseType::Typedef { name, actual_type } => {
+                write!(f, "typedef {} = {}", name, actual_type)
+            }
         }
     }
 }
 
-impl fmt::Display for TypeInfo {
+impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.qualifiers.is_const || self.qualifiers.is_volatile {
             write!(f, "{} {}", self.qualifiers, self.base_type)

@@ -28,15 +28,19 @@ pub enum TypeQualifier {
     Atomic,
 }
 
-#[derive(Debug, Clone)]
+#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
 pub enum StorageClassSpecifier {
-    Typedef,
-    Extern,
-    Static,
-    ThreadLocal,
-    Auto,
-    Register,
+    Typedef = 1 << 0,
+    Extern = 1 << 1,
+    Static = 1 << 2,
+    ThreadLocal = 1 << 3,
+    Auto = 1 << 4,
+    Register = 1 << 5,
+    Constexpr = 1 << 6,
 }
+
+pub type StorageClassFlags = u8;
 
 #[derive(Debug)]
 pub enum UnaryOperator {
@@ -176,7 +180,7 @@ pub struct CastExpression {
 #[derive(Debug)]
 pub struct ImplicitCastExpression {
     pub expression: Node<Expression>,
-    pub target_type: PrimitiveType,
+    pub target_type: BaseType,
 }
 
 #[derive(Debug)]
@@ -426,6 +430,7 @@ impl fmt::Display for StorageClassSpecifier {
             StorageClassSpecifier::Auto => writeln!(f, "Auto"),
             StorageClassSpecifier::Static => writeln!(f, "Static"),
             StorageClassSpecifier::Extern => writeln!(f, "Extern"),
+            StorageClassSpecifier::Constexpr => writeln!(f, "Constexpr"),
         }
     }
 }
@@ -513,7 +518,7 @@ pub fn display_expr(expression: &Expression, span: &Span) {
             add_branch!("SizeofTypeExpression {}", span);
             {
                 add_branch!("TypeName");
-                display_typename(&type_name);
+                display_typename(type_name);
             }
         }
         Expression::SizeofVal(unary_exp) => {
@@ -524,7 +529,7 @@ pub fn display_expr(expression: &Expression, span: &Span) {
             add_branch!("AlignofExpression {}", span);
             {
                 add_branch!("TypeName");
-                display_typename(&type_name);
+                display_typename(type_name);
             }
         }
         Expression::Member(member_expr) => {
@@ -645,7 +650,7 @@ pub fn display_statement(statement: &Statement, span: &Span) {
                             display_declaration(declaration, &blockitem.span)
                         }
                         BlockItem::Statement(statement) => {
-                            display_statement(&statement, &blockitem.span);
+                            display_statement(statement, &blockitem.span);
                         }
                     }
                 }
@@ -719,10 +724,10 @@ pub fn display_statement(statement: &Statement, span: &Span) {
                 match &statement.initializer.node {
                     ForInitializer::Empty => add_leaf!("Empty"),
                     ForInitializer::Declaration(decl) => {
-                        display_declaration(&decl, &statement.initializer.span)
+                        display_declaration(decl, &statement.initializer.span)
                     }
                     ForInitializer::Expression(expression) => {
-                        display_expr(&expression, &statement.initializer.span);
+                        display_expr(expression, &statement.initializer.span);
                     }
                 }
             }
@@ -824,16 +829,11 @@ pub fn display_declaration(declaration: &Declaration, span: &Span) {
                 );
             }
         }
-        match &init_decl.node.initializer {
-            Some(initializer) => {
-                add_branch!("Initializer");
-                match &initializer.node {
-                    Initializer::AssignmentExpression(expr) => {
-                        display_expr(&expr, &initializer.span)
-                    }
-                }
+        if let Some(initializer) = &init_decl.node.initializer {
+            add_branch!("Initializer");
+            match &initializer.node {
+                Initializer::AssignmentExpression(expr) => display_expr(expr, &initializer.span),
             }
-            None => {}
         }
     }
 }

@@ -1,6 +1,10 @@
 int a = 2, b = 5;
-int short_int_var;
-int wow;
+char short_int_var;
+double wow;
+int static nicer;
+int static const nice;
+long int long c;
+int long long const static weird = 90;
 
 int main() {
   int x = 2;
