@@ -8,7 +8,7 @@ use crate::analysis::ast::*;
 use crate::typedefs::*;
 
 /// Maps TokenType::Keyword -> SpecifierQualifier
-fn keyword2specififerqualifier(keyword: &Keyword) -> Option<SpecifierQualifier> {
+fn keyword2specifierqualifier(keyword: &Keyword) -> Option<SpecifierQualifier> {
     let specqual = match keyword {
         // Type Qualifiers
         Keyword::Const => SpecifierQualifier::TypeQualifier(TypeQualifier::Const),
@@ -391,6 +391,7 @@ impl<'a> Parser<'a> {
         //      assignment-expression
         //      { initializer-list }
         //      { initializer-list , }
+
         match self.tokenizer.peek_token()? {
             Some((TokenType::OpenBrace, _, _)) => {
                 // Parse Initializer-List
@@ -398,7 +399,13 @@ impl<'a> Parser<'a> {
             }
             Some(_) => {
                 // Parse an expression
-                let expression = self.parse_expr()?;
+                // NOTE: self.parse_assignment_expr() to be used instead of self.parse_expr() to
+                // allow declarations like:
+                // int x = 2, y = 3;
+                //         ^^
+                // If using parse_expr(), the assignment expression of x will contain a comma
+                // expression, instead of the comma depicting separate declarator
+                let expression = self.parse_assignment_expr()?;
 
                 // Create and return an initializer using the parsed expression
                 Ok(Node::new(
@@ -1319,13 +1326,11 @@ impl<'a> Parser<'a> {
                 }
                 _ => Ok(expression),
             },
-            None => {
-                Err(CompilerError {
-                    kind: CompilerErrorKind::SyntaxError,
-                    message: "Expected expression, instead got end of file".to_string(),
-                    location: None,
-                })
-            }
+            None => Err(CompilerError {
+                kind: CompilerErrorKind::SyntaxError,
+                message: "Expected expression, instead got end of file".to_string(),
+                location: None,
+            }),
         }
     }
 
@@ -1871,13 +1876,15 @@ impl<'a> Parser<'a> {
         //      type-specifier specifier-qualifier-listopt
         //      type-qualifier specifier-qualifier-listopt
         //      alignment-specifier specifier-qualifier-listopt
+
         let mut specifier_qualifier_list: Vec<Node<SpecifierQualifier>> = Vec::new();
         while let Some((token, start, end)) = self.tokenizer.peek_token()? {
             match token {
-                TokenType::Keyword(keyword) => match keyword2specififerqualifier(&keyword) {
+                TokenType::Keyword(keyword) => match keyword2specifierqualifier(&keyword) {
                     Some(spec_qual) => {
                         // Push the specifier/qualifier
                         specifier_qualifier_list.push(Node::new(spec_qual, Span::new(start, end)));
+
                         // Consume the specifier/qualifier token
                         self.tokenizer.next_token()?;
                     }
@@ -1988,7 +1995,7 @@ impl<'a> Parser<'a> {
                             self.tokenizer.peek_token()?
                         {
                             // If Yes then check if the Keyword is a Specifier-Qualifier
-                            if keyword2specififerqualifier(&keyword).is_some() {
+                            if keyword2specifierqualifier(&keyword).is_some() {
                                 // If Yes then it must be a type-name, so parse a type-name
                                 let type_name = self.parse_type_name()?;
                                 // Accept a `)`

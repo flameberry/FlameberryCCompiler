@@ -415,6 +415,19 @@ impl fmt::Display for Constant {
     }
 }
 
+impl fmt::Display for StorageClassSpecifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StorageClassSpecifier::Typedef => writeln!(f, "Typedef"),
+            StorageClassSpecifier::Register => writeln!(f, "Register"),
+            StorageClassSpecifier::ThreadLocal => writeln!(f, "ThreadLocal"),
+            StorageClassSpecifier::Auto => writeln!(f, "Auto"),
+            StorageClassSpecifier::Static => writeln!(f, "Static"),
+            StorageClassSpecifier::Extern => writeln!(f, "Extern"),
+        }
+    }
+}
+
 impl fmt::Display for SpecifierQualifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

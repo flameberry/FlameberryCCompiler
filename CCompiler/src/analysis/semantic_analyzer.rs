@@ -31,52 +31,7 @@ impl<'a> SemanticAnalyzer<'a> {
                         for blockitem in comp_stmt {
                             match &blockitem.node {
                                 BlockItem::Declaration(declaration) => {
-                                    for init_decl in &declaration.init_declarators {
-                                        if let Some(init_node) = &init_decl.node.initializer {
-                                            match &init_node.node {
-                                                Initializer::AssignmentExpression(asgn_expr) => {
-                                                    // 1. Convert set of declaration specifiers to an actual type
-                                                    let declaration_type =
-                                                        TypeInfo::from_declaration_specifiers(
-                                                            &declaration.specifiers,
-                                                        )?;
-
-                                                    // 2. Check if the expression type is compatible with the declaration type
-                                                    match TypeInfo::compare(
-                                                        &declaration_type,
-                                                        &self.evaluate_expr(
-                                                            asgn_expr,
-                                                            &init_node.span,
-                                                        )?,
-                                                    ) {
-                                                        TypeCompatibility::Identical => {},
-                                                        TypeCompatibility::Incompatible => return Err(CompilerError {
-                                                            kind: CompilerErrorKind::SemanticError,
-                                                            message: "Assigning an incompatible type during declaration".to_string(),
-                                                            location: Some(init_node.span.start)
-                                                        }),
-                                                        _ => todo!()
-                                                    }
-
-                                                    // 3. Insert into the symbol table this declaration with it's details and scope ID
-                                                    match &init_decl.node.declarator.node {
-                                                        Declarator::DirectDeclarator(idname) => {
-                                                            self.symboltableref.insert(
-                                                                &idname,
-                                                                *self.scopeidstack.last().unwrap(),
-                                                                declaration_type,
-                                                                None, // TODO: Add support for storage classifiers
-                                                                None,
-                                                            );
-                                                        }
-                                                        Declarator::FunctionDeclarator(_) => {
-                                                            todo!()
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                                    self.evaluate_declaration(declaration)?
                                 }
                                 BlockItem::Statement(_) => {}
                             }
@@ -92,7 +47,57 @@ impl<'a> SemanticAnalyzer<'a> {
                         });
                     }
                 }
-                ExternalDeclaration::Declaration(_) => {}
+                ExternalDeclaration::Declaration(declaration) => {
+                    self.evaluate_declaration(declaration)?
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn evaluate_declaration(&mut self, declaration: &Declaration) -> Result<(), CompilerError> {
+        for init_decl in &declaration.init_declarators {
+            if let Some(init_node) = &init_decl.node.initializer {
+                match &init_node.node {
+                    Initializer::AssignmentExpression(asgn_expr) => {
+                        // 1. Convert set of declaration specifiers to an actual type
+                        let declaration_type =
+                            TypeInfo::from_declaration_specifiers(&declaration.specifiers)?;
+
+                        // 2. Check if the expression type is compatible with the declaration type
+                        match TypeInfo::compare(
+                            &declaration_type,
+                            &self.evaluate_expr(asgn_expr, &init_node.span)?,
+                        ) {
+                            TypeCompatibility::Identical => {}
+                            TypeCompatibility::Incompatible => {
+                                return Err(CompilerError {
+                                    kind: CompilerErrorKind::SemanticError,
+                                    message: "Assigning an incompatible type during declaration"
+                                        .to_string(),
+                                    location: Some(init_node.span.start),
+                                })
+                            }
+                            _ => todo!(),
+                        }
+
+                        // 3. Insert into the symbol table this declaration with it's details and scope ID
+                        match &init_decl.node.declarator.node {
+                            Declarator::DirectDeclarator(idname) => {
+                                self.symboltableref.insert(
+                                    idname,
+                                    *self.scopeidstack.last().unwrap(),
+                                    declaration_type,
+                                    None, // TODO: Add support for storage classifiers
+                                    None,
+                                )?;
+                            }
+                            Declarator::FunctionDeclarator(_) => {
+                                todo!()
+                            }
+                        }
+                    }
+                }
             }
         }
         Ok(())
@@ -110,8 +115,6 @@ impl<'a> SemanticAnalyzer<'a> {
         // 4. If conversion is needed and possible then:
         //      a. Either insert an implicit conversion in AST (like gcc does)
         //      b. Or if it is a constant then convert it immediately
-
-        println!("{:?}", expression);
 
         match &expression {
             Expression::BinaryOperator(binary_expr) => {
@@ -185,7 +188,7 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 
     /// Returns the operand type that is expected for the given binary operator
-    fn get_binary_operand_type(operator: BinaryOperator) {
+    fn get_binary_operand_type(operator: BinaryOperator) -> Option<PrimitiveType> {
         todo!()
     }
 }

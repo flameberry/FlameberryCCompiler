@@ -1,4 +1,6 @@
-use crate::analysis::ast::{DeclarationSpecifier, TypeName, TypeQualifier, TypeSpecifier};
+use std::fmt;
+
+use crate::analysis::ast::{DeclarationSpecifier, StorageClassSpecifier, TypeName, TypeQualifier, TypeSpecifier};
 use crate::analysis::node::Node;
 use crate::errors::{CompilerError, CompilerErrorKind};
 
@@ -260,7 +262,7 @@ impl TypeInfo {
                             TypeSpecifier::Double => typeinfo.base_type = PrimitiveType::Double,
 
                             // This is never possible so basically dead code
-                            TypeSpecifier::Signed | TypeSpecifier::Unsigned => assert!(false),
+                            TypeSpecifier::Signed | TypeSpecifier::Unsigned => unreachable!(),
 
                             // Yet to handle type specifiers like Complex
                             _ => todo!(),
@@ -307,6 +309,79 @@ impl TypeInfo {
                 inner: Box::new(self),
             },
             qualifiers: TypeQualifiers::default(),
+        }
+    }
+}
+
+
+// ----------------------------------------- Display Implementations for the above structs -----------------------------------------
+
+impl fmt::Display for TypeQualifiers {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut qualifiers = vec![];
+        if self.is_const {
+            qualifiers.push("const");
+        }
+        if self.is_volatile {
+            qualifiers.push("volatile");
+        }
+        if self.is_restrict {
+            qualifiers.push("restrict");
+        }
+        if self.is_atomic {
+            qualifiers.push("atomic");
+        }
+        write!(f, "{}", qualifiers.join(" "))
+    }
+}
+
+impl fmt::Display for PrimitiveType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PrimitiveType::Void => write!(f, "void"),
+            PrimitiveType::Bool => write!(f, "bool"),
+            PrimitiveType::Char { signed } => write!(f, "{}char", if *signed { "signed " } else { "unsigned " }),
+            PrimitiveType::Short { signed } => write!(f, "{}short", if *signed { "signed " } else { "unsigned " }),
+            PrimitiveType::Int { signed } => write!(f, "{}int", if *signed { "signed " } else { "unsigned " }),
+            PrimitiveType::Long { signed } => write!(f, "{}long", if *signed { "signed " } else { "unsigned " }),
+            PrimitiveType::LongLong { signed } => write!(f, "{}long long", if *signed { "signed " } else { "unsigned " }),
+            PrimitiveType::Float => write!(f, "float"),
+            PrimitiveType::Double => write!(f, "double"),
+            PrimitiveType::LongDouble => write!(f, "long double"),
+            PrimitiveType::Pointer { inner } => write!(f, "*{}", inner),
+            PrimitiveType::Array { element_type, size } => match size {
+                Some(s) => write!(f, "{}[{}]", element_type, s),
+                None => write!(f, "{}[]", element_type),
+            },
+            PrimitiveType::Function { return_type, parameters, is_variadic } => {
+                let params: Vec<String> = parameters.iter().map(|p| format!("{}", p)).collect();
+                let params_str = if *is_variadic {
+                    format!("{}, ...", params.join(", "))
+                } else {
+                    params.join(", ")
+                };
+                write!(f, "{}({})", return_type, params_str)
+            }
+            PrimitiveType::Struct { name, fields } => {
+                let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{}: {}", n, t)).collect();
+                write!(f, "struct {} {{ {} }}", name, fields_str.join("; "))
+            }
+            PrimitiveType::Union { name, fields } => {
+                let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{}: {}", n, t)).collect();
+                write!(f, "union {} {{ {} }}", name, fields_str.join("; "))
+            }
+            PrimitiveType::Enum { name, underlying_type } => write!(f, "enum {} : {}", name, underlying_type),
+            PrimitiveType::Typedef { name, actual_type } => write!(f, "typedef {} = {}", name, actual_type),
+        }
+    }
+}
+
+impl fmt::Display for TypeInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.qualifiers.is_const || self.qualifiers.is_volatile {
+            write!(f, "{} {}", self.qualifiers, self.base_type)
+        } else {
+            write!(f, "{}", self.base_type)
         }
     }
 }

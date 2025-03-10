@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::analysis::ast::StorageClassSpecifier;
 use crate::errors::{CompilerError, CompilerErrorKind};
@@ -137,5 +138,42 @@ impl SymbolTable {
                 Ok(())
             }
         }
+    }
+}
+
+impl fmt::Display for SymbolTable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "----------------------------------- Symbol Table -----------------------------------"
+        )?;
+
+        writeln!(
+            f,
+            "{0: <20} | {1: <20} | {2: <20} | {3: <20} | {4: <20}",
+            "Name", "Type", "Storage Class", "Value", "Scope"
+        )?;
+
+        for (symbolname, symboldef) in &self.hashmap {
+            for idx in &symboldef.depthsortedindices {
+                let symbol = &self.symbolbuffer[*idx as usize];
+                writeln!(
+                    f,
+                    "{0: <20} | {1: <20} | {2: <20} | {3: <20} | {4: <20}",
+                    symbolname,
+                    symbol.typeinfo.to_string(),
+                    symbol
+                        .storageclass
+                        .as_ref()
+                        .map_or("None".to_string(), |s| s.to_string()),
+                    symbol
+                        .value
+                        .as_ref()
+                        .map_or("None".to_string(), |v| v.to_string()),
+                    symbol.scopeid
+                )?;
+            }
+        }
+        Ok(())
     }
 }

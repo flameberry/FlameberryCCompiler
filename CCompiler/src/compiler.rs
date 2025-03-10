@@ -64,6 +64,7 @@ impl<'a> Compiler<'a> {
                 match semantic_analyzer.analyze(&translation_unit) {
                     Ok(()) => {
                         println!("Semantic Analysis was successful");
+                        println!("\n\n{}", self.symboltable);
 
                         // This `if` statement is for developer debugging convenience, to toggle the assembly generation
                         if true {
