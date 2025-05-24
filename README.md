@@ -1,7 +1,9 @@
 # Flameberry C Compiler (Written in Rust)
+
 Flameberry C compiler is primitive C (ISO 17 standard compliant) compiler which is in early stages and the future plan is to make it a fully featured compiler with decent performance.
 
 **Currently it supports:**
+
 1. Preprocessing comments
 2. Lexing (almost) every kind of C token
 3. Parsing of:
@@ -36,7 +38,9 @@ Flameberry C compiler is primitive C (ISO 17 standard compliant) compiler which 
 4. Generation of basic Abstract Syntax Tree for the C Translation Unit
 
 ## Demo
+
 For the following Sandbox/test.c program, the generated AST is:
+
 ```C
 static int g_GlobalVariable;
 static int g_NiceVar;

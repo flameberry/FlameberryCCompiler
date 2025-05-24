@@ -39,21 +39,11 @@ fn keyword2declspec(keyword: &Keyword) -> Option<DeclarationSpecifier> {
     let declspec = match keyword {
         // Storage Class Specifiers
         Keyword::Auto => DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Auto),
-        Keyword::Register => {
-            DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Register)
-        }
-        Keyword::Extern => {
-            DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Extern)
-        }
-        Keyword::Static => {
-            DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Static)
-        }
-        Keyword::_Thread_local => {
-            DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::ThreadLocal)
-        }
-        Keyword::Typedef => {
-            DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Typedef)
-        }
+        Keyword::Register => DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Register),
+        Keyword::Extern => DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Extern),
+        Keyword::Static => DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Static),
+        Keyword::_Thread_local => DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::ThreadLocal),
+        Keyword::Typedef => DeclarationSpecifier::StorageClassSpecifier(StorageClassSpecifier::Typedef),
 
         // Type Qualifiers
         Keyword::Const => DeclarationSpecifier::TypeQualifier(TypeQualifier::Const),
@@ -130,7 +120,7 @@ fn is_expr_unary(expression: &Expression) -> bool {
         | Expression::Call(_)
         | Expression::Cast(_)
         | Expression::ImplicitCast(_) => true,
-        Expression::TernaryOperator(_) | Expression::Comma(_) => false,
+        Expression::TernaryOperator(_) | Expression::Comma(_) | Expression::Empty => false,
         Expression::BinaryOperator(expr) => expr.operator.node == BinaryOperator::Index,
     }
 }
@@ -174,12 +164,7 @@ impl<'a> Parser<'a> {
 
                         // As it is confirmed by the previous if statement that there is only 1 declarator
                         // We can grab it from the init declarator list
-                        let fdeclarator = &declaration
-                            .init_declarators
-                            .first()
-                            .unwrap()
-                            .node
-                            .declarator;
+                        let fdeclarator = &declaration.init_declarators.first().unwrap().node.declarator;
 
                         // Parse a function definition
                         if let Declarator::FunctionDeclarator(fdecl) = &fdeclarator.node {
@@ -215,7 +200,8 @@ impl<'a> Parser<'a> {
                             //                               ^^ Unexpected `{`
                             return Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
-                                message: "Unexpected token: `{`, statement is not a valid function declaration".to_string(),
+                                message: "Unexpected token: `{`, statement is not a valid function declaration"
+                                    .to_string(),
                                 location: Some(start),
                             });
                         }
@@ -227,10 +213,9 @@ impl<'a> Parser<'a> {
                         let declspan = Span::new(declspan_start, end);
 
                         // Create an ExternalDeclaration and push it
-                        tranlation_unit.external_declarations.push(Node::new(
-                            ExternalDeclaration::Declaration(declaration),
-                            declspan,
-                        ));
+                        tranlation_unit
+                            .external_declarations
+                            .push(Node::new(ExternalDeclaration::Declaration(declaration), declspan));
                     }
                     _ => {
                         return Err(CompilerError {
@@ -379,9 +364,7 @@ impl<'a> Parser<'a> {
                 None => {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
-                        message:
-                            "Expected a semicolon, or an init-declarator, instead found end of file"
-                                .to_string(),
+                        message: "Expected a semicolon, or an init-declarator, instead found end of file".to_string(),
                         location: None,
                     })
                 }
@@ -419,9 +402,7 @@ impl<'a> Parser<'a> {
             }
             None => Err(CompilerError {
                 kind: CompilerErrorKind::SyntaxError,
-                message:
-                    "Expected assignment expression or an initializer list, instead got end of file"
-                        .to_string(),
+                message: "Expected assignment expression or an initializer list, instead got end of file".to_string(),
                 location: None,
             }),
         }
@@ -504,10 +485,7 @@ impl<'a> Parser<'a> {
 
                     let mut expect_parameter = false;
 
-                    while !matches!(
-                        self.tokenizer.peek_token()?,
-                        Some((TokenType::CloseParenthesis, _, _))
-                    ) {
+                    while !matches!(self.tokenizer.peek_token()?, Some((TokenType::CloseParenthesis, _, _))) {
                         let parameterdecl = self.parse_parameter_decl()?;
                         parameters.push(parameterdecl);
 
@@ -531,10 +509,11 @@ impl<'a> Parser<'a> {
                     // I.e. when a comma is consumed, but the next token is ) then the while loop will exit and return parameters successfully
                     // But that is not valid C syntax, a comma cannot be present if no parameter is present after it
                     if expect_parameter {
-                        return Err(CompilerError{
+                        return Err(CompilerError {
                             kind: CompilerErrorKind::SyntaxError,
-                            message: "Expected type specifier for parameter declaration after `,` instead got `)`".to_string(),
-                            location: None
+                            message: "Expected type specifier for parameter declaration after `,` instead got `)`"
+                                .to_string(),
+                            location: None,
                         });
                     }
                     // Return the parameters
@@ -577,10 +556,7 @@ impl<'a> Parser<'a> {
                     // Parse the expected direct declarator (Function pointers will be handled in the future)
                     if !specifiers.is_empty() {
                         // Currently we only support DirectDeclarators in parameter declaration
-                        let declarator = Node::new(
-                            Declarator::DirectDeclarator(identifier),
-                            Span::new(start, end),
-                        );
+                        let declarator = Node::new(Declarator::DirectDeclarator(identifier), Span::new(start, end));
                         // Create the FunctionParameter with the Identifier as we hit an Identifier
                         let parameter = FunctionParameter {
                             specifiers,
@@ -637,7 +613,7 @@ impl<'a> Parser<'a> {
                             kind: CompilerErrorKind::SyntaxError,
                             message: "Expected a type specifier for parameter declaration, instead found: `,` or `)`"
                                 .to_string(),
-                                location: Some(start)
+                            location: Some(start),
                         });
                     }
                 }
@@ -704,10 +680,7 @@ impl<'a> Parser<'a> {
                                 let span = Span::new(start, defaultstmt.span.end);
 
                                 // Create and return the Default Statement
-                                Ok(Node::new(
-                                    Statement::DefaultStatement(Box::new(defaultstmt)),
-                                    span,
-                                ))
+                                Ok(Node::new(Statement::DefaultStatement(Box::new(defaultstmt)), span))
                             }
                             Keyword::If => {
                                 // if (<expression>) <statement>
@@ -731,9 +704,7 @@ impl<'a> Parser<'a> {
 
                                 // Check for an else statement and parse it
                                 // Also calculate the span for the entire if statement
-                                if let Some((TokenType::Keyword(Keyword::Else), _, _)) =
-                                    self.tokenizer.peek_token()?
-                                {
+                                if let Some((TokenType::Keyword(Keyword::Else), _, _)) = self.tokenizer.peek_token()? {
                                     // Consume the Else Token once it is confirmed that it is really an Else Token
                                     self.tokenizer.next_token()?;
                                     // Parse the else statement
@@ -852,13 +823,10 @@ impl<'a> Parser<'a> {
                                                 let declaration = self.parse_declaration()?;
 
                                                 // Accept a `;`
-                                                let (_, semicolon_end) =
-                                                    self.accept_token(TokenType::Semicolon)?;
+                                                let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
 
-                                                let forinit =
-                                                    ForInitializer::Declaration(declaration);
-                                                let forinit_span =
-                                                    Span::new(peek_start, semicolon_end);
+                                                let forinit = ForInitializer::Declaration(declaration);
+                                                let forinit_span = Span::new(peek_start, semicolon_end);
 
                                                 forinitializer = Node::new(forinit, forinit_span);
                                             } else {
@@ -876,66 +844,56 @@ impl<'a> Parser<'a> {
                                             self.tokenizer.next_token()?;
 
                                             // Else if the next token is a Semicolon, then return an Empty Initializer
-                                            forinitializer = Node::new(
-                                                ForInitializer::Empty,
-                                                Span::new(peek_start, peek_start),
-                                            );
+                                            forinitializer =
+                                                Node::new(ForInitializer::Empty, Span::new(peek_start, peek_start));
                                         } else {
                                             // Else expect an expression (like an assignment expression)
                                             let expression = self.parse_expr()?;
 
                                             // Accept a `;`
-                                            let (_, semicolon_end) =
-                                                self.accept_token(TokenType::Semicolon)?;
+                                            let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
 
                                             // Calculate the span of the ForInitializer
                                             // Span = Start of expression -> End of the semicolon
-                                            let span =
-                                                Span::new(expression.span.start, semicolon_end);
+                                            let span = Span::new(expression.span.start, semicolon_end);
 
                                             // Create and store the ForInitializer
-                                            forinitializer = Node::new(
-                                                ForInitializer::Expression(expression.node),
-                                                span,
-                                            );
+                                            forinitializer =
+                                                Node::new(ForInitializer::Expression(expression.node), span);
                                         }
                                     }
                                     None => {
                                         // This error should occur when we encounter an end of file instead of an initializer
                                         return Err(CompilerError {
                                             kind: CompilerErrorKind::SyntaxError,
-                                            message:
-                                                "Expected a for initializer, instead got end of file"
-                                                    .to_string(),
+                                            message: "Expected a for initializer, instead got end of file".to_string(),
                                             location: None,
                                         });
                                     }
                                 }
 
                                 // Parse the For Condition
-                                let condition = if let Some((TokenType::Semicolon, _, _)) =
-                                    self.tokenizer.peek_token()?
-                                {
-                                    // If the next token is semicolon then the condition is None
-                                    None
-                                } else {
-                                    // Else parse the condition expression
-                                    Some(self.parse_expr()?)
-                                };
+                                let condition =
+                                    if let Some((TokenType::Semicolon, _, _)) = self.tokenizer.peek_token()? {
+                                        // If the next token is semicolon then the condition is None
+                                        None
+                                    } else {
+                                        // Else parse the condition expression
+                                        Some(self.parse_expr()?)
+                                    };
 
                                 // Accept a semicolon irrespective of the presence of a for condition
                                 self.accept_token(TokenType::Semicolon)?;
 
                                 // Parse the For Step Expression
-                                let step = if let Some((TokenType::CloseParenthesis, _, _)) =
-                                    self.tokenizer.peek_token()?
-                                {
-                                    // If the next token is `)` then the step expression is None
-                                    None
-                                } else {
-                                    // Else parse the step expression
-                                    Some(self.parse_expr()?)
-                                };
+                                let step =
+                                    if let Some((TokenType::CloseParenthesis, _, _)) = self.tokenizer.peek_token()? {
+                                        // If the next token is `)` then the step expression is None
+                                        None
+                                    } else {
+                                        // Else parse the step expression
+                                        Some(self.parse_expr()?)
+                                    };
 
                                 // Accept a `)`
                                 self.accept_token(TokenType::CloseParenthesis)?;
@@ -973,19 +931,13 @@ impl<'a> Parser<'a> {
                                 // Accept a semicolon
                                 let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
                                 // Create and return a Break Statement
-                                Ok(Node::new(
-                                    Statement::BreakStatement,
-                                    Span::new(start, semicolon_end),
-                                ))
+                                Ok(Node::new(Statement::BreakStatement, Span::new(start, semicolon_end)))
                             }
                             Keyword::Continue => {
                                 // Accept a semicolon
                                 let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
                                 // Create and return a Continue Statement
-                                Ok(Node::new(
-                                    Statement::ContinueStatement,
-                                    Span::new(start, semicolon_end),
-                                ))
+                                Ok(Node::new(Statement::ContinueStatement, Span::new(start, semicolon_end)))
                             }
                             Keyword::Goto => {
                                 // jump-statement:
@@ -995,8 +947,7 @@ impl<'a> Parser<'a> {
                                 match self.tokenizer.next_token()? {
                                     Some((TokenType::Identifier(identifier), id_start, id_end)) => {
                                         // Accept a `;`
-                                        let (_, semicolon_end) =
-                                            self.accept_token(TokenType::Semicolon)?;
+                                        let (_, semicolon_end) = self.accept_token(TokenType::Semicolon)?;
 
                                         // Create and return a goto statement
                                         Ok(Node::new(
@@ -1018,8 +969,7 @@ impl<'a> Parser<'a> {
                                     }),
                                     None => Err(CompilerError {
                                         kind: CompilerErrorKind::SyntaxError,
-                                        message: "Expected an identifier, instead got end of file"
-                                            .to_string(),
+                                        message: "Expected an identifier, instead got end of file".to_string(),
                                         location: None,
                                     }),
                                 }
@@ -1034,17 +984,11 @@ impl<'a> Parser<'a> {
                                 // Span = Start of the expression -> End of the semicolon
                                 let span = Span::new(start, semicolon_end);
 
-                                Ok(Node::new(
-                                    Statement::ExpressionStatement(Some(expression)),
-                                    span,
-                                ))
+                                Ok(Node::new(Statement::ExpressionStatement(Some(expression)), span))
                             }
                             _ => Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
-                                message: format!(
-                                    "Unexpected start of a statement with keyword: {:?}",
-                                    keyword
-                                ),
+                                message: format!("Unexpected start of a statement with keyword: {:?}", keyword),
                                 location: Some(start),
                             }),
                         }
@@ -1090,10 +1034,7 @@ impl<'a> Parser<'a> {
                         // Span = Start of the expression -> End of the semicolon
                         let span = Span::new(start, semicolon_end);
 
-                        Ok(Node::new(
-                            Statement::ExpressionStatement(Some(expression)),
-                            span,
-                        ))
+                        Ok(Node::new(Statement::ExpressionStatement(Some(expression)), span))
                     }
                     TokenType::OpenBrace => {
                         // Consume the OpenBrace
@@ -1111,10 +1052,7 @@ impl<'a> Parser<'a> {
 
                         // If the statement starts with a semicolon then we store it as an empty expression statement
                         // The span of this statement will be the (start, end) of the semicolon token
-                        Ok(Node::new(
-                            Statement::ExpressionStatement(None),
-                            Span::new(start, end),
-                        ))
+                        Ok(Node::new(Statement::ExpressionStatement(None), Span::new(start, end)))
                     }
                     _ => {
                         // expression-statement:
@@ -1130,10 +1068,7 @@ impl<'a> Parser<'a> {
                         // Span = Start of the expression -> End of the semicolon
                         let span = Span::new(start, semicolon_end);
 
-                        Ok(Node::new(
-                            Statement::ExpressionStatement(Some(expression)),
-                            span,
-                        ))
+                        Ok(Node::new(Statement::ExpressionStatement(Some(expression)), span))
                     }
                 }
             }
@@ -1156,10 +1091,7 @@ impl<'a> Parser<'a> {
 
         let span_start = self.tokenizer.get_lineinfo();
 
-        while !matches!(
-            self.tokenizer.peek_token()?,
-            Some((TokenType::CloseBrace, _, _))
-        ) {
+        while !matches!(self.tokenizer.peek_token()?, Some((TokenType::CloseBrace, _, _))) {
             match self.tokenizer.peek_token()? {
                 Some((token, start, _)) => {
                     let mut is_declaration = false;
@@ -1188,17 +1120,13 @@ impl<'a> Parser<'a> {
                         let statement = self.parse_statement()?;
                         // Create a block item using the node and span of the statement
                         // The span of the block item will be the same as that of the statement
-                        blockitems.push(Node::new(
-                            BlockItem::Statement(statement.node),
-                            statement.span,
-                        ));
+                        blockitems.push(Node::new(BlockItem::Statement(statement.node), statement.span));
                     }
                 }
                 None => {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
-                        message: "Expected a declaration or a statement, instead got end of file"
-                            .to_string(),
+                        message: "Expected a declaration or a statement, instead got end of file".to_string(),
                         location: None,
                     })
                 }
@@ -1808,9 +1736,7 @@ impl<'a> Parser<'a> {
         let mut typenames: Vec<Node<TypeName>> = Vec::new();
         let mut start_arr: Vec<FileLocation> = Vec::new();
 
-        while let Some((TokenType::OpenParenthesis, paren_start, _)) =
-            self.tokenizer.peek_token()?
-        {
+        while let Some((TokenType::OpenParenthesis, paren_start, _)) = self.tokenizer.peek_token()? {
             // Consume the `(`
             self.tokenizer.next_token()?;
 
@@ -1896,8 +1822,7 @@ impl<'a> Parser<'a> {
                     None => {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::SyntaxError,
-                            message: "Unexpected keyword: {}, expected a Specifier-Qualifier"
-                                .to_string(),
+                            message: "Unexpected keyword: {}, expected a Specifier-Qualifier".to_string(),
                             location: Some(start),
                         })
                     }
@@ -1991,29 +1916,21 @@ impl<'a> Parser<'a> {
                     self.tokenizer.next_token()?;
 
                     // Check if the next token is `(`
-                    if let Some((TokenType::OpenParenthesis, paren_start, _)) =
-                        self.tokenizer.peek_token()?
-                    {
+                    if let Some((TokenType::OpenParenthesis, paren_start, _)) = self.tokenizer.peek_token()? {
                         self.tokenizer.next_token()?;
                         // If Yes then check if the next_token is a Keyword
-                        if let Some((TokenType::Keyword(keyword), _, _)) =
-                            self.tokenizer.peek_token()?
-                        {
+                        if let Some((TokenType::Keyword(keyword), _, _)) = self.tokenizer.peek_token()? {
                             // If Yes then check if the Keyword is a Specifier-Qualifier
                             if keyword2specifierqualifier(&keyword).is_some() {
                                 // If Yes then it must be a type-name, so parse a type-name
                                 let type_name = self.parse_type_name()?;
                                 // Accept a `)`
-                                let (_, paren_end) =
-                                    self.accept_token(TokenType::CloseParenthesis)?;
+                                let (_, paren_end) = self.accept_token(TokenType::CloseParenthesis)?;
                                 // Calculate the span of the entire sizeof expression
                                 // Span = Start of the sizeof Keyword -> End of the CloseParenthesis
                                 let span = Span::new(start, paren_end);
                                 // Create and return a SizeofType Expression
-                                return Ok(Node::new(
-                                    Expression::SizeofType(Box::new(type_name)),
-                                    span,
-                                ));
+                                return Ok(Node::new(Expression::SizeofType(Box::new(type_name)), span));
                             }
                         }
                         // Else If the token is not a specifier-qualifier keyword
@@ -2032,8 +1949,7 @@ impl<'a> Parser<'a> {
                         self.accept_token(TokenType::CloseParenthesis)?;
 
                         // Check for any number of postfix operators keeping expression as the already parsed part
-                        expression =
-                            self.parse_postfix_operators_with_init_expr(expression, paren_start)?;
+                        expression = self.parse_postfix_operators_with_init_expr(expression, paren_start)?;
 
                         // Calculate the span of the entire SizeofVal Expression
                         // Span = Start of Sizeof Keyword -> End of Expression inside Sizeof
@@ -2118,10 +2034,7 @@ impl<'a> Parser<'a> {
                     // Create and store a postfix expression using the already passed expression plus the postfix operator
                     expression = Node::new(
                         Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
-                            operator: Node::new(
-                                UnaryOperator::PostIncrement,
-                                Span::new(start, end),
-                            ),
+                            operator: Node::new(UnaryOperator::PostIncrement, Span::new(start, end)),
                             operand: expression,
                         })),
                         span,
@@ -2136,10 +2049,7 @@ impl<'a> Parser<'a> {
                     // Create and store a postfix expression using the already passed expression plus the postfix operator
                     expression = Node::new(
                         Expression::UnaryOperator(Box::new(UnaryOperatorExpression {
-                            operator: Node::new(
-                                UnaryOperator::PostDecrement,
-                                Span::new(start, end),
-                            ),
+                            operator: Node::new(UnaryOperator::PostDecrement, Span::new(start, end)),
                             operand: expression,
                         })),
                         span,
@@ -2176,10 +2086,7 @@ impl<'a> Parser<'a> {
                             //                  ^ Missing identifiers
                             return Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
-                                message: format!(
-                                    "Expected an identifier, instead got {:?}",
-                                    unexpected
-                                ),
+                                message: format!("Expected an identifier, instead got {:?}", unexpected),
                                 location: Some(unexpected_start),
                             });
                         }
@@ -2190,8 +2097,7 @@ impl<'a> Parser<'a> {
                             //                  ^^ End of file, instead of identifiers
                             return Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
-                                message: "Expected an identifier, instead got end of file"
-                                    .to_string(),
+                                message: "Expected an identifier, instead got end of file".to_string(),
                                 location: None,
                             });
                         }
@@ -2279,10 +2185,7 @@ impl<'a> Parser<'a> {
 
         let mut expect_argument = false;
 
-        while !matches!(
-            self.tokenizer.peek_token()?,
-            Some((TokenType::CloseParenthesis, _, _))
-        ) {
+        while !matches!(self.tokenizer.peek_token()?, Some((TokenType::CloseParenthesis, _, _))) {
             // An argument is simply an assignment expression
             let assignment_expr = self.parse_assignment_expr()?;
             // Push the parsed argument
@@ -2304,9 +2207,8 @@ impl<'a> Parser<'a> {
         if expect_argument {
             return Err(CompilerError {
                 kind: CompilerErrorKind::SyntaxError,
-                message:
-                    "Expected assignment expression for argument in the function call after `,` instead got `)`"
-                        .to_string(),
+                message: "Expected assignment expression for argument in the function call after `,` instead got `)`"
+                    .to_string(),
                 location: None,
             });
         }
@@ -2326,18 +2228,16 @@ impl<'a> Parser<'a> {
                 TokenType::Identifier(identifier) => {
                     Node::new(Expression::Identifier(identifier), Span::new(start, end))
                 }
-                TokenType::Integer(integer) => Node::new(
-                    Expression::Constant(Constant::Integer(integer)),
-                    Span::new(start, end),
-                ),
+                TokenType::Integer(integer) => {
+                    Node::new(Expression::Constant(Constant::Integer(integer)), Span::new(start, end))
+                }
                 TokenType::FloatingPoint(floatingpoint) => Node::new(
                     Expression::Constant(Constant::Float(floatingpoint)),
                     Span::new(start, end),
                 ),
-                TokenType::Character(ch) => Node::new(
-                    Expression::Constant(Constant::Character(ch)),
-                    Span::new(start, end),
-                ),
+                TokenType::Character(ch) => {
+                    Node::new(Expression::Constant(Constant::Character(ch)), Span::new(start, end))
+                }
                 TokenType::StringLiteral(strliteral) => {
                     Node::new(Expression::StringLiteral(strliteral), Span::new(start, end))
                 }
@@ -2400,10 +2300,7 @@ impl<'a> Parser<'a> {
 
     /// Forces the next token to be the given `tokentype`
     /// Returns (start, end) both being character indices in the file
-    fn accept_token(
-        &mut self,
-        tokentype: TokenType,
-    ) -> Result<(FileLocation, FileLocation), CompilerError> {
+    fn accept_token(&mut self, tokentype: TokenType) -> Result<(FileLocation, FileLocation), CompilerError> {
         match self.tokenizer.next_token()? {
             Some((token, start, end)) => {
                 if token == tokentype {
@@ -2411,10 +2308,7 @@ impl<'a> Parser<'a> {
                 } else {
                     Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
-                        message: format!(
-                            "Expected token: {:?}, instead found: {:?}",
-                            tokentype, token
-                        ),
+                        message: format!("Expected token: {:?}, instead found: {:?}", tokentype, token),
                         location: Some(start),
                     })
                 }

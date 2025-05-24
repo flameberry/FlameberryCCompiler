@@ -156,7 +156,7 @@ pub struct Tokenizer<'a> {
     numeric_constant_regex: Regex, // Regular expression for a numeric constant in C
 }
 
-impl<'a> Default for Tokenizer<'a> {
+impl Default for Tokenizer<'_> {
     fn default() -> Self {
         Tokenizer {
             cidx: 0,
@@ -184,8 +184,9 @@ impl<'a> Tokenizer<'a> {
             linerow: 1,
             linecol: 1,
             numeric_constant_regex: Regex::new(
-                r"^[+-]?(?P<number>\d+(?P<dot>\.\d+)?(?P<exp>[eE][+-]?\d+)?)((?i)(?P<suffix>(u|l|ul|ull|f|d)))?\b"
-            ).unwrap()
+                r"^[+-]?(?P<number>\d+(?P<dot>\.\d+)?(?P<exp>[eE][+-]?\d+)?)((?i)(?P<suffix>(u|l|ul|ull|f|d)))?\b",
+            )
+            .unwrap(),
         }
     }
 
@@ -243,7 +244,7 @@ impl<'a> Tokenizer<'a> {
         if temp_srcbuffer.is_empty() {
             Ok(None)
         } else {
-            let (token, bytes) = self.tokenize(&temp_srcbuffer)?;
+            let (token, bytes) = self.tokenize(temp_srcbuffer)?;
 
             // Store the peeked token info
             self.peeked_linecol += bytes;
@@ -350,9 +351,11 @@ impl<'a> Tokenizer<'a> {
 
     fn tokenize(&self, src: &str) -> Result<(TokenType, usize), CompilerError> {
         let next = match src.chars().next() {
-        Some(c) => c,
-        None => panic!("Internal Error: Failed to get the next character from the src buffer, presumably it's empty!"),
-    };
+            Some(c) => c,
+            None => {
+                panic!("Internal Error: Failed to get the next character from the src buffer, presumably it's empty!")
+            }
+        };
 
         // Required to check multicharacter operators like ++, --, +=, -=, &&, ||
         let next2next = src.chars().nth(1);
@@ -468,12 +471,8 @@ impl<'a> Tokenizer<'a> {
                         if captures.name("dot").is_some() || captures.name("exp").is_some() {
                             let fptype = match captures.name("suffix") {
                                 Some(suffix) => match suffix.as_str() {
-                                    "f" | "F" => FloatingPointType::Float(
-                                        number.as_str().parse::<f32>().unwrap(),
-                                    ),
-                                    "l" | "L" => FloatingPointType::LongDouble(
-                                        number.as_str().parse::<f64>().unwrap(),
-                                    ),
+                                    "f" | "F" => FloatingPointType::Float(number.as_str().parse::<f32>().unwrap()),
+                                    "l" | "L" => FloatingPointType::LongDouble(number.as_str().parse::<f64>().unwrap()),
                                     _ => {
                                         return Err(CompilerError {
                                             kind: CompilerErrorKind::TokenizerError,
@@ -485,31 +484,24 @@ impl<'a> Tokenizer<'a> {
                                         });
                                     }
                                 },
-                                None => FloatingPointType::Double(
-                                    number.as_str().parse::<f64>().unwrap(),
-                                ),
+                                None => FloatingPointType::Double(number.as_str().parse::<f64>().unwrap()),
                             };
                             Ok((TokenType::FloatingPoint(fptype), captures[0].len()))
                         } else {
                             // Else it is a integer constant
                             let inttype = match captures.name("suffix") {
                                 Some(suffix) => match suffix.as_str() {
-                                    "u" | "U" => IntegerType::Unsigned(
-                                        number.as_str().parse::<u32>().unwrap(),
-                                    ),
-                                    "l" | "L" => IntegerType::SignedLong(
-                                        number.as_str().parse::<i64>().unwrap(),
-                                    ),
-                                    "ul" | "uL" | "Ul" | "UL" => IntegerType::UnsignedLong(
-                                        number.as_str().parse::<u64>().unwrap(),
-                                    ),
-                                    "ll" | "lL" | "Ll" | "LL" => IntegerType::SignedLongLong(
-                                        number.as_str().parse::<i128>().unwrap(),
-                                    ),
-                                    "ull" | "ulL" | "uLl" | "uLL" | "Ull" | "UlL" | "ULl"
-                                    | "ULL" => IntegerType::UnsignedLongLong(
-                                        number.as_str().parse::<u128>().unwrap(),
-                                    ),
+                                    "u" | "U" => IntegerType::Unsigned(number.as_str().parse::<u32>().unwrap()),
+                                    "l" | "L" => IntegerType::SignedLong(number.as_str().parse::<i64>().unwrap()),
+                                    "ul" | "uL" | "Ul" | "UL" => {
+                                        IntegerType::UnsignedLong(number.as_str().parse::<u64>().unwrap())
+                                    }
+                                    "ll" | "lL" | "Ll" | "LL" => {
+                                        IntegerType::SignedLongLong(number.as_str().parse::<i128>().unwrap())
+                                    }
+                                    "ull" | "ulL" | "uLl" | "uLL" | "Ull" | "UlL" | "ULl" | "ULL" => {
+                                        IntegerType::UnsignedLongLong(number.as_str().parse::<u128>().unwrap())
+                                    }
                                     _ => {
                                         return Err(CompilerError {
                                             kind: CompilerErrorKind::TokenizerError,
@@ -543,10 +535,7 @@ impl<'a> Tokenizer<'a> {
             1 => Ok((TokenType::Character(ch.chars().next().unwrap()), bytes + 2)),
             _ => Err(CompilerError {
                 kind: CompilerErrorKind::TokenizerError,
-                message: format!(
-                    "A single quoted literal can only have 1 character and not: {}",
-                    ch
-                ),
+                message: format!("A single quoted literal can only have 1 character and not: {}", ch),
                 location: None,
             }),
         }
@@ -556,10 +545,7 @@ impl<'a> Tokenizer<'a> {
         let (stringliteral, bytes) = iter_while(&src[1..], |ch| ch != '"');
 
         match src.chars().nth(bytes + 1) {
-            Some('"') => Ok((
-                TokenType::StringLiteral(stringliteral.to_string()),
-                bytes + 2,
-            )),
+            Some('"') => Ok((TokenType::StringLiteral(stringliteral.to_string()), bytes + 2)),
             _ => Err(CompilerError {
                 kind: CompilerErrorKind::TokenizerError,
                 message: "Missing \" in a quoted string literal".to_string(),

@@ -93,10 +93,7 @@ pub fn generate_tac(translation_unit: &TranslationUnit) -> Result<Vec<TAC>, Comp
     Ok(tac)
 }
 
-fn generate_tac_stmt(
-    statement: &Statement,
-    out_tacvec: &mut Vec<TAC>,
-) -> Result<Option<String>, CompilerError> {
+fn generate_tac_stmt(statement: &Statement, out_tacvec: &mut Vec<TAC>) -> Result<Option<String>, CompilerError> {
     match statement {
         Statement::ExpressionStatement(expr) => {
             if let Some(expression) = expr {
@@ -178,10 +175,7 @@ fn generate_tac_stmt(
     }
 }
 
-fn generate_tac_expr(
-    expression: &Expression,
-    out_tacvec: &mut Vec<TAC>,
-) -> Result<String, CompilerError> {
+fn generate_tac_expr(expression: &Expression, out_tacvec: &mut Vec<TAC>) -> Result<String, CompilerError> {
     match expression {
         Expression::Identifier(identifier) => Ok(identifier.to_string()),
         Expression::Constant(constant) => Ok(format!("{}", constant)),

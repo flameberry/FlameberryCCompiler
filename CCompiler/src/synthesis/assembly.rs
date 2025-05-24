@@ -29,10 +29,7 @@ impl AssemblyGenerator {
     /// Generates assembly code from the given `TranslationUnit`.
     /// The generated assembly code includes the necessary directives and labels for the main function.
     /// Returns the generated assembly code as a `Result<String, CompilerError>`.
-    pub fn generate_assembly(
-        &mut self,
-        translation_unit: &TranslationUnit,
-    ) -> Result<String, CompilerError> {
+    pub fn generate_assembly(&mut self, translation_unit: &TranslationUnit) -> Result<String, CompilerError> {
         let mut assembly = String::new();
 
         assembly += "\t.globl _main\n";

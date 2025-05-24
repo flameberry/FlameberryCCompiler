@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::analysis::ast::{StorageClassFlags, StorageClassSpecifier};
+use crate::analysis::ast::StorageClassFlags;
 use crate::errors::{CompilerError, CompilerErrorKind};
 use crate::typedefs::{Constant, Type};
 
@@ -28,9 +28,10 @@ impl SymbolHashMapEntry {
         }
     }
 
+    #[allow(clippy::comparison_chain)]
     fn bsearch(&self, scopeid: u32, symbolbuffer: &[SymbolDefinition]) -> i32 {
         let mut beg = 0;
-        let mut end = self.depthsortedindices.len();
+        let mut end = self.depthsortedindices.len() - 1;
         let mut mid = (beg + end) / 2;
         let mut probecount = 0;
 
@@ -45,10 +46,11 @@ impl SymbolHashMapEntry {
                 beg = mid + 1;
                 mid = (beg + end) / 2;
             } else {
+                println!("Probe count for successfully searching symbol within scopes: {probecount}");
                 return self.depthsortedindices[mid];
             }
         }
-        println!("Probe count for searching symbol within scopes: {probecount}");
+        println!("Probe count for unsuccessfully searching symbol within scopes: {probecount}");
 
         // Return -1 indicating that symbol definition within the given scopeid was not found
         -1
@@ -163,10 +165,7 @@ impl fmt::Display for SymbolTable {
                     symbolname,
                     symbol.typeinfo.to_string(),
                     format!("{:b}", symbol.storageclass),
-                    symbol
-                        .value
-                        .as_ref()
-                        .map_or("None".to_string(), |v| v.to_string()),
+                    symbol.value.as_ref().map_or("None".to_string(), |v| v.to_string()),
                     symbol.scopeid
                 )?;
             }

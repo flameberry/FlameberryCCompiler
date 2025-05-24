@@ -2,9 +2,7 @@ use flameberrycc::compiler::{Compiler, CompilerSpecification};
 use std::time::Instant;
 
 fn compile_file(srcpath: &str) {
-    let specification = CompilerSpecification {
-        target_file: srcpath,
-    };
+    let specification = CompilerSpecification { target_file: srcpath };
     let mut compiler = Compiler::new(specification);
     compiler.compile();
 }

@@ -2,7 +2,8 @@ static int g_GlobalVariable;
 static int g_NiceVar;
 static _Bool _g_AssumeABoolean;
 
-int nice = 69, wow(), good = 3;
+int nice = 69;
+// int nice = 69, wow(), good = 3;
 
 int main(void) {
   // This is a comment to try and mess with the tokenizer :D

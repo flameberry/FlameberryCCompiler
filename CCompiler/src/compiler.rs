@@ -51,27 +51,29 @@ impl<'a> Compiler<'a> {
 
         // Parse the source file
         match parser.parse() {
-            Ok(translation_unit) => {
-                println!(
-                    "\n-------------------------- Abstract Syntax Tree --------------------------"
-                );
+            Ok(mut translation_unit) => {
+                println!("\n-------------------------- Abstract Syntax Tree --------------------------");
 
                 // Display the parsed translation unit
                 display_translationunit(&translation_unit);
 
                 let mut semantic_analyzer = SemanticAnalyzer::new(&mut self.symboltable);
 
-                match semantic_analyzer.analyze(&translation_unit) {
+                match semantic_analyzer.analyze(&mut translation_unit) {
                     Ok(()) => {
                         println!("Semantic Analysis was successful");
+
+                        println!(
+                            "\n-------------------------- Modified Abstract Syntax Tree --------------------------"
+                        );
+                        display_translationunit(&translation_unit);
+
                         println!("\n\n{}", self.symboltable);
 
                         // This `if` statement is for developer debugging convenience, to toggle the assembly generation
                         if true {
                             // Intermediate Code Generation
-                            println!(
-                                "\n-------------------------- Three Address Code --------------------------"
-                            );
+                            println!("\n-------------------------- Three Address Code --------------------------");
                             let tac = generate_tac(&translation_unit).unwrap();
                             for (i, instruction) in tac.iter().enumerate() {
                                 println!("({})\t{}", i, instruction);
@@ -94,27 +96,26 @@ impl<'a> Compiler<'a> {
                                     // Write to assembly file
                                     // Derive the path by replacing the extension of the source file with .s
                                     let assembly_file_path =
-                                        path::Path::new(self.specification.target_file)
-                                            .with_extension("s");
-                                    let mut assemblyfile =
-                                        File::create(assembly_file_path).unwrap();
+                                        path::Path::new(self.specification.target_file).with_extension("s");
+                                    let mut assemblyfile = File::create(assembly_file_path).unwrap();
                                     assemblyfile.write_all(assembly.as_bytes()).unwrap();
-                                    return true;
+
+                                    true
                                 }
                                 // If there is an error in the assembly generation, print the error and return false
                                 Err(err) => {
                                     println!("{}:{}", self.specification.target_file, err);
-                                    return false;
+                                    false
                                 }
                             }
                         } else {
-                            return true;
+                            true
                         }
                     }
                     // If there is an error in the semantic analysis, print the error and return false
                     Err(err) => {
                         println!("{}:{}", self.specification.target_file, err);
-                        return false;
+                        false
                     }
                 }
             }

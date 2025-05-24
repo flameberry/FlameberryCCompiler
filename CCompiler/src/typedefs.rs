@@ -1,8 +1,6 @@
 use std::fmt;
 
-use crate::analysis::ast::{
-    DeclarationSpecifier, StorageClassFlags, TypeName, TypeQualifier, TypeSpecifier,
-};
+use crate::analysis::ast::{DeclarationSpecifier, StorageClassFlags, TypeName, TypeQualifier, TypeSpecifier};
 use crate::analysis::node::Node;
 use crate::errors::{CompilerError, CompilerErrorKind};
 
@@ -117,14 +115,10 @@ impl BaseType {
                     }
                     IntegerType::Signed(_) => Type::new(BaseType::Int { signed: true }),
                     IntegerType::SignedLong(_) => Type::new(BaseType::Long { signed: true }),
-                    IntegerType::SignedLongLong(_) => {
-                        Type::new(BaseType::LongLong { signed: true })
-                    }
+                    IntegerType::SignedLongLong(_) => Type::new(BaseType::LongLong { signed: true }),
                     IntegerType::Unsigned(_) => Type::new(BaseType::Int { signed: false }),
                     IntegerType::UnsignedLong(_) => Type::new(BaseType::Long { signed: false }),
-                    IntegerType::UnsignedLongLong(_) => {
-                        Type::new(BaseType::LongLong { signed: false })
-                    }
+                    IntegerType::UnsignedLongLong(_) => Type::new(BaseType::LongLong { signed: false }),
                 }
             }
             Constant::Float(float_type) => match float_type {
@@ -163,11 +157,7 @@ pub struct TypeQualifiers {
 pub enum TypeCompatibility {
     Identical,
     Compatible,
-    ImplicitConversion {
-        source: Type,
-        target: Type,
-        potential_data_loss: bool,
-    },
+    ImplicitConversion { base_type: BaseType },
     Incompatible,
 }
 
@@ -222,7 +212,8 @@ impl Type {
                         if signed_keyword || unsigned_keyword {
                             return Err(CompilerError {
                                 kind: CompilerErrorKind::SemanticError,
-                                message: "Cannot combine `signed` keyword with previous declaration specifier".to_string(),
+                                message: "Cannot combine `signed` keyword with previous declaration specifier"
+                                    .to_string(),
                                 location: Some(decl_spec.span.start),
                             });
                         }
@@ -233,7 +224,8 @@ impl Type {
                         if unsigned_keyword || signed_keyword {
                             return Err(CompilerError {
                                 kind: CompilerErrorKind::SemanticError,
-                                message: "Cannot combine `unsigned` keyword with previous declaration specifier".to_string(),
+                                message: "Cannot combine `unsigned` keyword with previous declaration specifier"
+                                    .to_string(),
                                 location: Some(decl_spec.span.start),
                             });
                         }
@@ -333,8 +325,7 @@ impl Type {
                 _ => {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SemanticError,
-                        message: "Invalid declaration containing more than 2 long specifiers."
-                            .to_string(),
+                        message: "Invalid declaration containing more than 2 long specifiers.".to_string(),
                         location: Some(declaration_specifiers.first().unwrap().span.start),
                     }); // long long long x;
                 }
@@ -356,19 +347,112 @@ impl Type {
         if x == y {
             TypeCompatibility::Identical
         } else {
-            // Check if the types are compatible or not
-            // TODO: Implement checking for possible compatibility and implicit conversions, but
-            // for now the types must be exactly identical.
-            TypeCompatibility::Incompatible
+            // Check if the types are compatible or not --------------------------------------------------
+            // Rule 1: If one of the types x, y is a pointer to a type T, and other is an array to the
+            // same type T, then x and y are compatible
+            if let (BaseType::Pointer { inner: typeinfo }, BaseType::Array { element_type, size: _ })
+            | (BaseType::Array { element_type, size: _ }, BaseType::Pointer { inner: typeinfo }) =
+                (&x.base_type, &y.base_type)
+            {
+                if typeinfo == element_type {
+                    return TypeCompatibility::Compatible;
+                }
+            }
+
+            // Check if types are can be converted implicitly to match each other ------------------------
+            // Type Promotion Rules
+            if x.base_type == BaseType::LongDouble || y.base_type == BaseType::LongDouble {
+                return TypeCompatibility::ImplicitConversion {
+                    base_type: BaseType::LongDouble,
+                };
+            }
+
+            if x.base_type == BaseType::Double || y.base_type == BaseType::Double {
+                return TypeCompatibility::ImplicitConversion {
+                    base_type: BaseType::Double,
+                };
+            }
+
+            if x.base_type == BaseType::Float || y.base_type == BaseType::Float {
+                return TypeCompatibility::ImplicitConversion {
+                    base_type: BaseType::Float,
+                };
+            }
+
+            // Integer Promotion Rules
+            match (&x.base_type, &y.base_type) {
+                // This statement matches signed long long with unsigned long long and promotes
+                // ...expression to unsigned long long
+                (BaseType::LongLong { signed: true }, BaseType::LongLong { signed: false })
+                | (BaseType::LongLong { signed: false }, BaseType::LongLong { signed: true }) => {
+                    TypeCompatibility::ImplicitConversion {
+                        base_type: BaseType::LongLong { signed: false },
+                    }
+                }
+
+                // This statement matches signed long with unsigned long and promotes
+                // ...expression to unsigned long
+                (BaseType::Long { signed: true }, BaseType::Long { signed: false })
+                | (BaseType::Long { signed: false }, BaseType::Long { signed: true }) => {
+                    TypeCompatibility::ImplicitConversion {
+                        base_type: BaseType::Long { signed: false },
+                    }
+                }
+
+                // This statement matches signed int with unsigned int and promotes
+                // ...expression to unsigned int
+                (BaseType::Int { signed: true }, BaseType::Int { signed: false })
+                | (BaseType::Int { signed: false }, BaseType::Int { signed: true }) => {
+                    TypeCompatibility::ImplicitConversion {
+                        base_type: BaseType::Int { signed: false },
+                    }
+                }
+
+                // This statement matches long long with any lower type and promotes
+                // ...expression to long long
+                (BaseType::LongLong { signed }, _) | (_, BaseType::LongLong { signed }) => {
+                    TypeCompatibility::ImplicitConversion {
+                        base_type: BaseType::LongLong { signed: *signed },
+                    }
+                }
+
+                // This statement matches long with any lower type and promotes
+                // ...expression to long
+                (BaseType::Long { signed }, _) | (_, BaseType::Long { signed }) => {
+                    TypeCompatibility::ImplicitConversion {
+                        base_type: BaseType::Long { signed: *signed },
+                    }
+                }
+
+                // This statement matches int with any lower type and promotes
+                // ...expression to int
+                (BaseType::Int { signed }, _) | (_, BaseType::Int { signed }) => {
+                    TypeCompatibility::ImplicitConversion {
+                        base_type: BaseType::Int { signed: *signed },
+                    }
+                }
+
+                // This statement promotes any type combinations which are below int to int
+                (BaseType::Char { signed }, _)
+                | (_, BaseType::Char { signed })
+                | (BaseType::Short { signed }, _)
+                | (_, BaseType::Short { signed }) => TypeCompatibility::ImplicitConversion {
+                    base_type: BaseType::Int { signed: *signed },
+                },
+
+                // No operation can be done on void types without explicitly casting them
+                (BaseType::Void, _) | (_, BaseType::Void) => TypeCompatibility::Incompatible,
+
+                // According to the current implementation the types are not compatible ----------------------
+                _ => TypeCompatibility::Incompatible,
+            }
         }
     }
 
     // Helper method to create a pointer to this type
     pub fn pointer_to(self) -> Type {
         Type {
-            base_type: BaseType::Pointer {
-                inner: Box::new(self),
-            },
+            base_type: BaseType::Pointer { inner: Box::new(self) },
             qualifiers: TypeQualifiers::default(),
         }
     }
@@ -412,11 +496,9 @@ impl fmt::Display for BaseType {
             BaseType::Long { signed } => {
                 write!(f, "{}long", if *signed { "signed " } else { "unsigned " })
             }
-            BaseType::LongLong { signed } => write!(
-                f,
-                "{}long long",
-                if *signed { "signed " } else { "unsigned " }
-            ),
+            BaseType::LongLong { signed } => {
+                write!(f, "{}long long", if *signed { "signed " } else { "unsigned " })
+            }
             BaseType::Float => write!(f, "float"),
             BaseType::Double => write!(f, "double"),
             BaseType::LongDouble => write!(f, "long double"),
@@ -439,23 +521,14 @@ impl fmt::Display for BaseType {
                 write!(f, "{}({})", return_type, params_str)
             }
             BaseType::Struct { name, fields } => {
-                let fields_str: Vec<String> = fields
-                    .iter()
-                    .map(|(n, t)| format!("{}: {}", n, t))
-                    .collect();
+                let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{}: {}", n, t)).collect();
                 write!(f, "struct {} {{ {} }}", name, fields_str.join("; "))
             }
             BaseType::Union { name, fields } => {
-                let fields_str: Vec<String> = fields
-                    .iter()
-                    .map(|(n, t)| format!("{}: {}", n, t))
-                    .collect();
+                let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{}: {}", n, t)).collect();
                 write!(f, "union {} {{ {} }}", name, fields_str.join("; "))
             }
-            BaseType::Enum {
-                name,
-                underlying_type,
-            } => write!(f, "enum {} : {}", name, underlying_type),
+            BaseType::Enum { name, underlying_type } => write!(f, "enum {} : {}", name, underlying_type),
             BaseType::Typedef { name, actual_type } => {
                 write!(f, "typedef {} = {}", name, actual_type)
             }

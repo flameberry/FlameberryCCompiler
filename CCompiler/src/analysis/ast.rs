@@ -42,7 +42,7 @@ pub enum StorageClassSpecifier {
 
 pub type StorageClassFlags = u8;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UnaryOperator {
     /// `operand++`
     PostIncrement,
@@ -130,7 +130,7 @@ pub enum BinaryOperator {
     AssignBitwiseOr,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MemberOperator {
     /// operator.
     Direct,
@@ -138,53 +138,56 @@ pub enum MemberOperator {
     Indirect,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnaryOperatorExpression {
     pub operator: Node<UnaryOperator>,
     pub operand: Node<Expression>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryOperatorExpression {
     pub operator: Node<BinaryOperator>,
     pub lhs: Node<Expression>,
     pub rhs: Node<Expression>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TernaryOperatorExpression {
     pub condition: Node<Expression>,
     pub if_expr: Node<Expression>,
     pub else_expr: Node<Expression>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MemberExpression {
     pub operator: Node<MemberOperator>,
     pub expression: Node<Expression>,
     pub identifier: Node<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CallExpression {
     pub callee: Node<Expression>,
     pub argument_expr_list: Vec<Node<Expression>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CastExpression {
     pub expression: Node<Expression>,
     pub typename: Node<TypeName>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ImplicitCastExpression {
     pub expression: Node<Expression>,
     pub target_type: BaseType,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub enum Expression {
+    #[default]
+    Empty,
+
     Identifier(String), // TODO: This should be a pointer to the symbol table entry of the identifier
     Constant(Constant),
     StringLiteral(String),
@@ -217,13 +220,13 @@ pub enum DeclarationSpecifier {
 }
 
 /// Used to store parsed type-names
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SpecifierQualifier {
     TypeSpecifier(TypeSpecifier),
     TypeQualifier(TypeQualifier),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeName {
     pub specifier_qualifier_list: Vec<Node<SpecifierQualifier>>,
     pub abstract_declarator: Option<Node<Declarator>>,
@@ -453,6 +456,8 @@ pub fn display_typename(type_name: &Node<TypeName>) {
 
 pub fn display_expr(expression: &Expression, span: &Span) {
     match &expression {
+        Expression::Empty => add_leaf!("EmptyExpression"),
+
         Expression::Constant(constant) => {
             add_branch!("Constant");
             match constant {
@@ -470,11 +475,7 @@ pub fn display_expr(expression: &Expression, span: &Span) {
         Expression::UnaryOperator(unaryexpr) => {
             add_branch!("UnaryOperatorExpression {}", span);
             {
-                add_branch!(
-                    "Operator -> {:?} {}",
-                    unaryexpr.operator.node,
-                    unaryexpr.operator.span
-                );
+                add_branch!("Operator -> {:?} {}", unaryexpr.operator.node, unaryexpr.operator.span);
             }
             {
                 add_branch!("Expression");
@@ -583,12 +584,7 @@ pub fn display_expr(expression: &Expression, span: &Span) {
             }
         }
         Expression::ImplicitCast(cast_expr) => {
-            add_branch!("ImplicitCastExpression {}", span);
-            {
-                add_branch!("CType");
-                // TODO: Implement proper printing of CTypes
-                add_leaf!("{:?}", cast_expr.target_type);
-            }
+            add_branch!("ImplicitCastExpression - Target \"{}\" {}", cast_expr.target_type, span);
             {
                 add_branch!("Expression");
                 display_expr(&cast_expr.expression.node, &cast_expr.expression.span);
@@ -646,9 +642,7 @@ pub fn display_statement(statement: &Statement, span: &Span) {
             if !block.is_empty() {
                 for blockitem in block {
                     match &blockitem.node {
-                        BlockItem::Declaration(declaration) => {
-                            display_declaration(declaration, &blockitem.span)
-                        }
+                        BlockItem::Declaration(declaration) => display_declaration(declaration, &blockitem.span),
                         BlockItem::Statement(statement) => {
                             display_statement(statement, &blockitem.span);
                         }
@@ -723,9 +717,7 @@ pub fn display_statement(statement: &Statement, span: &Span) {
                 add_branch!("ForInitializer");
                 match &statement.initializer.node {
                     ForInitializer::Empty => add_leaf!("Empty"),
-                    ForInitializer::Declaration(decl) => {
-                        display_declaration(decl, &statement.initializer.span)
-                    }
+                    ForInitializer::Declaration(decl) => display_declaration(decl, &statement.initializer.span),
                     ForInitializer::Expression(expression) => {
                         display_expr(expression, &statement.initializer.span);
                     }
@@ -794,11 +786,7 @@ pub fn display_funcdeclarator(declarator: &FunctionDeclarator, span: Span) {
             match &param.node.declarator {
                 Some(paramdecl) => match &paramdecl.node {
                     Declarator::DirectDeclarator(paramidentifier) => {
-                        add_leaf!(
-                            "DirectDeclarator -> \"{}\" {}",
-                            paramidentifier,
-                            paramdecl.span
-                        )
+                        add_leaf!("DirectDeclarator -> \"{}\" {}", paramidentifier, paramdecl.span)
                     }
                     _ => panic!("Parameter Declarator should not be Function Declarator!"),
                 },
