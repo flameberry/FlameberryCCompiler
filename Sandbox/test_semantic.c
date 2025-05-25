@@ -13,6 +13,13 @@ int main() {
 	short_int_var += 1;
 	{
 		char shadowed;
+		do {
+			long shadowed;
+			while (shadowed != '0') {
+				for (int i = 0; i < 10; i += 1)
+					shadowed += 1;
+			}
+		} while (1);
 	}
 
 	for (int i = 0; i < 12; i - 1) {

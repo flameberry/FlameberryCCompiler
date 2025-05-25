@@ -802,7 +802,7 @@ impl<'a> Parser<'a> {
 
                                 // Create and return the DoWhileStatement
                                 Ok(Node::new(
-                                    Statement::DoWhileStatement(Box::new(DoWhileStatement {
+                                    Statement::DoWhileStatement(Box::new(WhileStatement {
                                         statement: dostmt,
                                         expression: doexpr,
                                     })),

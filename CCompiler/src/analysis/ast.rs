@@ -248,7 +248,7 @@ pub enum Statement {
     IfStatement(Box<IfStatement>),
     SwitchStatement(Box<SwitchStatement>),
     WhileStatement(Box<WhileStatement>),
-    DoWhileStatement(Box<DoWhileStatement>),
+    DoWhileStatement(Box<WhileStatement>),
     ForStatement(Box<ForStatement>),
     BreakStatement,
     ContinueStatement,
@@ -291,12 +291,6 @@ pub struct SwitchStatement {
 pub struct WhileStatement {
     pub expression: Node<Expression>,
     pub statement: Node<Statement>,
-}
-
-#[derive(Debug)]
-pub struct DoWhileStatement {
-    pub statement: Node<Statement>,
-    pub expression: Node<Expression>,
 }
 
 #[derive(Debug)]

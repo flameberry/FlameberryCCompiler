@@ -8,9 +8,18 @@ use super::node::Node;
 // TODOS: Store the scope ID somewhere in the AST probably
 // ...to ensure that every time we need to find a symbol from the AST we can lookup using the scope ID
 
+// Simple way to keep track of the context of the evaluation.
+// For checking whether break, continue statements are inside any valid loops
+enum EvaluationContext {
+    None,
+    Loop,
+}
+
 pub struct SemanticAnalyzer<'a> {
     symboltableref: &'a mut SymbolTable,
     scopeidstack: Vec<u32>,
+    counter: u32,
+    evaluation_context: EvaluationContext,
 }
 
 impl<'a> SemanticAnalyzer<'a> {
@@ -18,6 +27,8 @@ impl<'a> SemanticAnalyzer<'a> {
         Self {
             symboltableref,
             scopeidstack: vec![0], // 0 represents global scope
+            counter: 1,
+            evaluation_context: EvaluationContext::None,
         }
     }
 
@@ -34,6 +45,15 @@ impl<'a> SemanticAnalyzer<'a> {
         }
 
         None
+    }
+
+    fn push_scope(&mut self) {
+        self.scopeidstack.push(self.counter);
+        self.counter += 1;
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopeidstack.pop();
     }
 
     pub fn analyze(&mut self, translation_unit: &mut TranslationUnit) -> Result<(), CompilerError> {
@@ -67,8 +87,7 @@ impl<'a> SemanticAnalyzer<'a> {
     ) -> Result<(), CompilerError> {
         match statement {
             Statement::CompoundStatement(compound_stmt) => {
-                // Note: Assign scope ID and push it onto the current scope stack
-                self.scopeidstack.push(self.scopeidstack.last().unwrap() + 1);
+                self.push_scope();
 
                 for blockitem in compound_stmt {
                     match &mut blockitem.node {
@@ -77,8 +96,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     }
                 }
 
-                // Pop the scope id as we have exited the function definition scope
-                self.scopeidstack.pop();
+                self.pop_scope();
             }
             Statement::ReturnStatement(return_stmt) => {
                 // Check if return type is same as the expected_return_type, if not check if it's castable
@@ -116,6 +134,20 @@ impl<'a> SemanticAnalyzer<'a> {
             }
 
             Statement::ForStatement(for_stmt) => {
+                self.evaluation_context = EvaluationContext::Loop;
+
+                // So understand this, I'm considering a for-loop itself consisting of 2 scopes:
+                //
+                // 1. The outer scope which contains any definitions that may be made in the
+                //    initializer part of the for statement.
+                // 2. The inner scope which contains the code that is to be executed repeatedly
+                //    till the for condition is true.
+                //
+                // Reason: Because of this any initializer variable will be visible to the code
+                // inside for-loop, but any variable inside for-loop won't be visible to the
+                // for-condition or for-step statement.
+                self.push_scope();
+
                 // 1. Verify for loop initializer statement
                 match &mut for_stmt.initializer.node {
                     ForInitializer::Empty => {}
@@ -161,7 +193,96 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 // 4. Evaluate the for-loop body
                 self.evaluate_statement(&mut for_stmt.statement.node, expected_return_type)?;
+
+                // Pop the scope id as we have exited the for-loop scope
+                self.pop_scope();
+                self.evaluation_context = EvaluationContext::None;
             }
+
+            Statement::WhileStatement(while_stmt) | Statement::DoWhileStatement(while_stmt) => {
+                self.evaluation_context = EvaluationContext::Loop;
+
+                // 1. Evaluate condition and check if the type can evaluate into a boolean
+                let condition_type =
+                    self.evaluate_expr(&mut while_stmt.expression.node, &while_stmt.expression.span)?;
+
+                match Type::compare(&condition_type, &Type::new(BaseType::Bool)) {
+                    TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
+
+                    TypeCompatibility::ImplicitConversion { .. } => {
+                        // Add an implicit cast with target boolean type
+                        let temp_expr = std::mem::replace(&mut while_stmt.expression.node, Expression::Empty);
+
+                        while_stmt.expression.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
+                            expression: temp_expr,
+                            target_type: BaseType::Bool,
+                        }));
+                    }
+                    TypeCompatibility::Incompatible => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SemanticError,
+                            message: format!("Expected boolean expression, instead got {}", condition_type),
+                            location: Some(while_stmt.expression.span.start),
+                        })
+                    }
+                }
+
+                // 2. Evaluate the while-loop body
+                self.evaluate_statement(&mut while_stmt.statement.node, expected_return_type)?;
+
+                self.evaluation_context = EvaluationContext::None;
+            }
+
+            Statement::IfStatement(if_stmt) => {
+                // 1. Evaluate condition and check if the type can evaluate into a boolean
+                let condition_type = self.evaluate_expr(&mut if_stmt.expression.node, &if_stmt.expression.span)?;
+
+                match Type::compare(&condition_type, &Type::new(BaseType::Bool)) {
+                    TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
+
+                    TypeCompatibility::ImplicitConversion { .. } => {
+                        // Add an implicit cast with target boolean type
+                        let temp_expr = std::mem::replace(&mut if_stmt.expression.node, Expression::Empty);
+
+                        if_stmt.expression.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
+                            expression: temp_expr,
+                            target_type: BaseType::Bool,
+                        }));
+                    }
+                    TypeCompatibility::Incompatible => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SemanticError,
+                            message: format!("Expected boolean expression, instead got {}", condition_type),
+                            location: Some(if_stmt.expression.span.start),
+                        })
+                    }
+                }
+
+                // 2. Evaluate the if-statement body
+                self.evaluate_statement(&mut if_stmt.if_block.node, expected_return_type)?;
+
+                // 3. Evaluate the else-statement body if it exists
+                if let Some(else_block) = &mut if_stmt.else_block {
+                    self.evaluate_statement(&mut else_block.node, expected_return_type)?;
+                }
+            }
+
+            Statement::BreakStatement | Statement::ContinueStatement => {
+                if !matches!(self.evaluation_context, EvaluationContext::Loop) {
+                    let keyword = match statement {
+                        Statement::BreakStatement => "break",
+                        Statement::ContinueStatement => "continue",
+                        _ => unreachable!(), // Only these two arms are possible
+                    };
+
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SemanticError,
+                        message: format!("{} statement not allowed outside of a loop", keyword),
+                        location: None,
+                    });
+                }
+            }
+
             _ => todo!(),
         }
         Ok(())
