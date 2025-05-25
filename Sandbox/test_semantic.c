@@ -10,9 +10,14 @@ int shadowed;
 
 int main() {
 	int shadowed;
-	char new_var = short_int_var + 1;
+	short_int_var += 1;
 	{
 		char shadowed;
+	}
+
+	for (int i = 0; i < 12; i - 1) {
+		int counter = 45;
+		return 20 * counter;
 	}
 
 	int x = 2;

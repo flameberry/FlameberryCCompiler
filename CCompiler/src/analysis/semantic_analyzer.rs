@@ -3,6 +3,8 @@ use crate::errors::{CompilerError, CompilerErrorKind};
 use crate::symboltable::{SymbolDefinition, SymbolTable};
 use crate::typedefs::{BaseType, Type, TypeCompatibility, TypeQualifiers};
 
+use super::node::Node;
+
 // TODOS: Store the scope ID somewhere in the AST probably
 // ...to ensure that every time we need to find a symbol from the AST we can lookup using the scope ID
 
@@ -54,11 +56,15 @@ impl<'a> SemanticAnalyzer<'a> {
         };
 
         let (expected_return_type, _) = Type::from_declaration_specifiers(&function_def.specifiers)?;
-        self.evaluate_stmt(&mut function_def.body.node, &expected_return_type)?;
+        self.evaluate_statement(&mut function_def.body.node, &expected_return_type)?;
         Ok(())
     }
 
-    fn evaluate_stmt(&mut self, statement: &mut Statement, expected_return_type: &Type) -> Result<(), CompilerError> {
+    fn evaluate_statement(
+        &mut self,
+        statement: &mut Statement,
+        expected_return_type: &Type,
+    ) -> Result<(), CompilerError> {
         match statement {
             Statement::CompoundStatement(compound_stmt) => {
                 // Note: Assign scope ID and push it onto the current scope stack
@@ -67,7 +73,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 for blockitem in compound_stmt {
                     match &mut blockitem.node {
                         BlockItem::Declaration(declaration) => self.evaluate_declaration(declaration)?,
-                        BlockItem::Statement(stmt) => self.evaluate_stmt(stmt, expected_return_type)?,
+                        BlockItem::Statement(stmt) => self.evaluate_statement(stmt, expected_return_type)?,
                     }
                 }
 
@@ -102,6 +108,59 @@ impl<'a> SemanticAnalyzer<'a> {
                         })
                     }
                 }
+            }
+            Statement::ExpressionStatement(expr_node) => {
+                if let Some(expression) = expr_node {
+                    self.evaluate_expr(&mut expression.node, &expression.span)?;
+                }
+            }
+
+            Statement::ForStatement(for_stmt) => {
+                // 1. Verify for loop initializer statement
+                match &mut for_stmt.initializer.node {
+                    ForInitializer::Empty => {}
+                    ForInitializer::Expression(expression) => {
+                        self.evaluate_expr(expression, &for_stmt.initializer.span)?;
+                    }
+                    ForInitializer::Declaration(declaration) => self.evaluate_declaration(declaration)?,
+                }
+
+                // 2. Evaluate condition and check if the type can evaluate into a boolean
+                if let Some(condition) = &mut for_stmt.condition {
+                    let condition_type = self.evaluate_expr(&mut condition.node, &condition.span)?;
+
+                    match Type::compare(&condition_type, &Type::new(BaseType::Bool)) {
+                        TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
+
+                        TypeCompatibility::ImplicitConversion { .. } => {
+                            // Add an implicit cast with target boolean type
+                            let temp_expr = for_stmt.condition.take().unwrap();
+
+                            for_stmt.condition = Some(Node::new(
+                                Expression::ImplicitCast(Box::new(ImplicitCastExpression {
+                                    expression: temp_expr.node,
+                                    target_type: BaseType::Bool,
+                                })),
+                                temp_expr.span,
+                            ));
+                        }
+                        TypeCompatibility::Incompatible => {
+                            return Err(CompilerError {
+                                kind: CompilerErrorKind::SemanticError,
+                                message: format!("Expected boolean expression, instead got {}", condition_type),
+                                location: Some(condition.span.start),
+                            })
+                        }
+                    }
+                }
+
+                // 3. Evaluate step statement of for-loop
+                if let Some(step_expr) = &mut for_stmt.step {
+                    self.evaluate_expr(&mut step_expr.node, &step_expr.span)?;
+                }
+
+                // 4. Evaluate the for-loop body
+                self.evaluate_statement(&mut for_stmt.statement.node, expected_return_type)?;
             }
             _ => todo!(),
         }
