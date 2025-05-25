@@ -31,12 +31,12 @@ impl SymbolHashMapEntry {
     #[allow(clippy::comparison_chain)]
     fn bsearch(&self, scopeid: u32, symbolbuffer: &[SymbolDefinition]) -> i32 {
         let mut beg = 0;
-        let mut end = self.depthsortedindices.len() - 1;
+        let mut end = self.depthsortedindices.len() as i32 - 1;
         let mut mid = (beg + end) / 2;
         let mut probecount = 0;
 
         while beg <= end {
-            let midscopeid = symbolbuffer[self.depthsortedindices[mid] as usize].scopeid;
+            let midscopeid = symbolbuffer[self.depthsortedindices[mid as usize] as usize].scopeid;
             probecount += 1;
 
             if scopeid < midscopeid {
@@ -47,7 +47,7 @@ impl SymbolHashMapEntry {
                 mid = (beg + end) / 2;
             } else {
                 println!("Probe count for successfully searching symbol within scopes: {probecount}");
-                return self.depthsortedindices[mid];
+                return self.depthsortedindices[mid as usize];
             }
         }
         println!("Probe count for unsuccessfully searching symbol within scopes: {probecount}");
@@ -93,29 +93,6 @@ impl SymbolTable {
         })
     }
 
-    /// Insert a symbol into the table without checking whether it already exists
-    pub fn insert_unsafe(
-        &mut self,
-        name: &str,
-        scopeid: u32,
-        typeinfo: Type,
-        storageclass: StorageClassFlags,
-        value: Option<Constant>,
-    ) {
-        let index = self.symbolbuffer.len() as i32;
-        let mut entry = SymbolHashMapEntry::default();
-        entry.depthsortedindices.push(index);
-
-        self.hashmap.insert(name.to_string(), entry);
-
-        self.symbolbuffer.push(SymbolDefinition {
-            typeinfo,
-            storageclass,
-            value,
-            scopeid,
-        });
-    }
-
     /// By default this looks up the symbol first then inserts it in a safe way
     pub fn insert(
         &mut self,
@@ -125,20 +102,36 @@ impl SymbolTable {
         storageclass: StorageClassFlags,
         value: Option<Constant>,
     ) -> Result<(), CompilerError> {
-        match self.lookup(name, scopeid) {
-            Some(symboldef) => Err(CompilerError {
-                kind: CompilerErrorKind::InternalError,
-                message: format!(
-                    "Failed to insert symbol: Duplicate Symbols are not allowed in the Symbol Table.\n{:?}",
-                    symboldef
-                ),
-                location: None,
-            }),
-            None => {
-                // Symbol doesn't exist so safely can be inserted
-                self.insert_unsafe(name, scopeid, typeinfo, storageclass, value);
-                Ok(())
+        let index = self.symbolbuffer.len() as i32;
+
+        self.symbolbuffer.push(SymbolDefinition {
+            typeinfo,
+            storageclass,
+            value,
+            scopeid,
+        });
+
+        if let Some(entry) = self.hashmap.get_mut(name) {
+            match entry.bsearch(scopeid, &self.symbolbuffer) {
+                -1 => {
+                    // Insert into the existing symbol table hash map entry
+                    entry.depthsortedindices.push(index);
+                    Ok(())
+                }
+                idx => Err(CompilerError {
+                    kind: CompilerErrorKind::InternalError,
+                    message: format!(
+                        "Failed to insert symbol: Duplicate Symbols are not allowed in the Symbol Table.\n{:?}",
+                        self.symbolbuffer[idx as usize]
+                    ),
+                    location: None,
+                }),
             }
+        } else {
+            let mut entry = SymbolHashMapEntry::default();
+            entry.depthsortedindices.push(index);
+            self.hashmap.insert(name.to_string(), entry);
+            Ok(())
         }
     }
 }

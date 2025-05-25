@@ -6,12 +6,20 @@ int static const nice;
 long int long c;
 int long long const static weird;
 
+int shadowed;
+
 int main() {
-  int x = 2;
-  int y = 4;
-  int result = x * y;
-  float a = 20.23f;
-  int m = 10 + a;
-  int b = a;
-  return x + y;
+	int shadowed;
+	{
+		char shadowed;
+	}
+
+	int x = 2;
+	int y = 4;
+	int result = x * y;
+	float a = 20.23f;
+	char c = 'b';
+	int m = 10 + a, n = 10.0f - c;
+	int b = a;
+	return x + y + a + c;
 }

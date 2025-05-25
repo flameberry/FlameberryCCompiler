@@ -3,8 +3,6 @@ use crate::errors::{CompilerError, CompilerErrorKind};
 use crate::symboltable::SymbolTable;
 use crate::typedefs::{BaseType, Type, TypeCompatibility, TypeQualifiers};
 
-use super::node::Node;
-
 // TODOS: Store the scope ID somewhere in the AST probably
 // ...to ensure that every time we need to find a symbol from the AST we can lookup using the scope ID
 
@@ -24,30 +22,73 @@ impl<'a> SemanticAnalyzer<'a> {
     pub fn analyze(&mut self, translation_unit: &mut TranslationUnit) -> Result<(), CompilerError> {
         for extdecl in &mut translation_unit.external_declarations {
             match &mut extdecl.node {
-                ExternalDeclaration::FunctionDefinition(funcdef) => {
-                    if let Statement::CompoundStatement(comp_stmt) = &mut funcdef.body.node {
-                        // Note: Assign scope ID and push it onto the current scope stack
-                        self.scopeidstack.push(self.scopeidstack.last().unwrap() + 1);
-
-                        for blockitem in comp_stmt {
-                            match &mut blockitem.node {
-                                BlockItem::Declaration(declaration) => self.evaluate_declaration(declaration)?,
-                                BlockItem::Statement(_) => {}
-                            }
-                        }
-
-                        // Pop the scope id as we have exited the function definition scope
-                        self.scopeidstack.pop();
-                    } else {
-                        return Err(CompilerError {
-                            kind: CompilerErrorKind::SemanticError,
-                            message: "Function body must be a compound statement".to_string(),
-                            location: Some(funcdef.body.span.start),
-                        });
-                    }
-                }
+                ExternalDeclaration::FunctionDefinition(funcdef) => self.evaluate_function_def(funcdef)?,
                 ExternalDeclaration::Declaration(declaration) => self.evaluate_declaration(declaration)?,
             }
+        }
+        Ok(())
+    }
+
+    fn evaluate_function_def(&mut self, function_def: &mut FunctionDefinition) -> Result<(), CompilerError> {
+        let Statement::CompoundStatement(_) = &mut function_def.body.node else {
+            return Err(CompilerError {
+                kind: CompilerErrorKind::SemanticError,
+                message: "Function body must be a compound statement".to_string(),
+                location: Some(function_def.body.span.start),
+            });
+        };
+
+        let (expected_return_type, _) = Type::from_declaration_specifiers(&function_def.specifiers)?;
+        self.evaluate_stmt(&mut function_def.body.node, &expected_return_type)?;
+        Ok(())
+    }
+
+    fn evaluate_stmt(&mut self, statement: &mut Statement, expected_return_type: &Type) -> Result<(), CompilerError> {
+        match statement {
+            Statement::CompoundStatement(compound_stmt) => {
+                // Note: Assign scope ID and push it onto the current scope stack
+                self.scopeidstack.push(self.scopeidstack.last().unwrap() + 1);
+
+                for blockitem in compound_stmt {
+                    match &mut blockitem.node {
+                        BlockItem::Declaration(declaration) => self.evaluate_declaration(declaration)?,
+                        BlockItem::Statement(stmt) => self.evaluate_stmt(stmt, expected_return_type)?,
+                    }
+                }
+
+                // Pop the scope id as we have exited the function definition scope
+                self.scopeidstack.pop();
+            }
+            Statement::ReturnStatement(return_stmt) => {
+                // Check if return type is same as the expected_return_type, if not check if it's castable
+                let return_type = self.evaluate_expr(&mut return_stmt.node, &return_stmt.span)?;
+
+                match Type::compare(&return_type, expected_return_type) {
+                    TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
+
+                    TypeCompatibility::ImplicitConversion { .. } => {
+                        // Insert an implicit cast with target expected_return_type
+                        let temp_expr = std::mem::replace(&mut return_stmt.node, Expression::Empty);
+
+                        return_stmt.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
+                            expression: temp_expr,
+                            target_type: expected_return_type.base_type.clone(),
+                        }));
+                    }
+
+                    TypeCompatibility::Incompatible => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SemanticError,
+                            message: format!(
+                                "Expected return type: {}, instead got {}.",
+                                expected_return_type, return_type
+                            ),
+                            location: Some(return_stmt.span.start),
+                        })
+                    }
+                }
+            }
+            _ => todo!(),
         }
         Ok(())
     }
@@ -66,6 +107,7 @@ impl<'a> SemanticAnalyzer<'a> {
                         // 2. Check if the expression type is compatible with the declaration type
                         match Type::compare(&declaration_type, &rhs_typeinfo) {
                             TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
+
                             TypeCompatibility::ImplicitConversion { .. } => {
                                 // Note: Here is a logical mistake i.e., instead of checking that
                                 // the two types, declaration_type and initializer_expression_type
@@ -84,10 +126,11 @@ impl<'a> SemanticAnalyzer<'a> {
                                 init_node.node = Initializer::AssignmentExpression(Expression::ImplicitCast(Box::new(
                                     ImplicitCastExpression {
                                         target_type: declaration_type.base_type.clone(),
-                                        expression: Node::new(temp_expr, init_node.span),
+                                        expression: temp_expr,
                                     },
                                 )));
                             }
+
                             TypeCompatibility::Incompatible => {
                                 return Err(CompilerError {
                                     kind: CompilerErrorKind::SemanticError,
@@ -162,7 +205,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
                             binary_expr.rhs.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
                                 target_type: lhs_typeinfo.base_type.clone(),
-                                expression: rhs_expr,
+                                expression: rhs_expr.node,
                             }));
 
                             // 3. Set the composite type
@@ -178,7 +221,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
                                 binary_expr.lhs.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
                                     target_type: base_type.clone(),
-                                    expression: lhs_expr,
+                                    expression: lhs_expr.node,
                                 }));
                             }
 
@@ -189,7 +232,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
                                 binary_expr.rhs.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
                                     target_type: base_type.clone(),
-                                    expression: rhs_expr,
+                                    expression: rhs_expr.node,
                                 }));
                             }
 

@@ -179,7 +179,7 @@ pub struct CastExpression {
 
 #[derive(Debug, Clone)]
 pub struct ImplicitCastExpression {
-    pub expression: Node<Expression>,
+    pub expression: Expression,
     pub target_type: BaseType,
 }
 
@@ -584,10 +584,10 @@ pub fn display_expr(expression: &Expression, span: &Span) {
             }
         }
         Expression::ImplicitCast(cast_expr) => {
-            add_branch!("ImplicitCastExpression - Target \"{}\" {}", cast_expr.target_type, span);
+            add_branch!("ImplicitCastExpression - Target \"{}\"", cast_expr.target_type);
             {
                 add_branch!("Expression");
-                display_expr(&cast_expr.expression.node, &cast_expr.expression.span);
+                display_expr(&cast_expr.expression, span);
             }
         }
         Expression::Comma(expressions) => {
