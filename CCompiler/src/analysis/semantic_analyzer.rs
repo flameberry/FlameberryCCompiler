@@ -1,6 +1,6 @@
 use crate::analysis::{ast::*, node::Span};
 use crate::errors::{CompilerError, CompilerErrorKind};
-use crate::symboltable::SymbolTable;
+use crate::symboltable::{SymbolDefinition, SymbolTable};
 use crate::typedefs::{BaseType, Type, TypeCompatibility, TypeQualifiers};
 
 // TODOS: Store the scope ID somewhere in the AST probably
@@ -17,6 +17,21 @@ impl<'a> SemanticAnalyzer<'a> {
             symboltableref,
             scopeidstack: vec![0], // 0 represents global scope
         }
+    }
+
+    fn lookup_innermost_scope_symbol(&self, name: &str) -> Option<&SymbolDefinition> {
+        // The most idiomatic way to do this, i.e., go from the current scope to the outermost
+        // scope and search for the symbol definition in each scope. We stop at the innermost scope
+        // that we find the symbol with the given name.
+        // Note: There are possibly better ways to do this
+
+        for scopeid in self.scopeidstack.iter().rev() {
+            if let Some(symboldef) = self.symboltableref.lookup(name, *scopeid) {
+                return Some(symboldef);
+            }
+        }
+
+        None
     }
 
     pub fn analyze(&mut self, translation_unit: &mut TranslationUnit) -> Result<(), CompilerError> {
@@ -277,11 +292,14 @@ impl<'a> SemanticAnalyzer<'a> {
                 // Tasks to be performed:
                 // 1. Check if idname is a valid symbol in the symboltable
                 // 2. Convert TypeName to TypeInfo
-                match self.symboltableref.lookup(idname, *self.scopeidstack.last().unwrap()) {
+                match self.lookup_innermost_scope_symbol(idname) {
                     Some(symboldef) => Ok(symboldef.typeinfo.clone()),
                     None => Err(CompilerError {
                         kind: CompilerErrorKind::SemanticError,
-                        message: format!("Undefined symbol in the given scope: {}", idname),
+                        message: format!(
+                            "Unable to find the symbol named '{}' in any of the reachable scopes.",
+                            idname
+                        ),
                         location: Some(span.start),
                     }),
                 }
@@ -317,10 +335,7 @@ impl<'a> SemanticAnalyzer<'a> {
     fn is_lvalue(&self, expression: &Expression) -> bool {
         // TODO: Update function to recognize complex lvalue expressions
         match expression {
-            Expression::Identifier(idname) => self
-                .symboltableref
-                .lookup(idname, *self.scopeidstack.last().unwrap())
-                .is_some(),
+            Expression::Identifier(idname) => self.lookup_innermost_scope_symbol(idname).is_some(),
             Expression::Constant(_) => false,
             _ => todo!(),
         }
@@ -330,8 +345,7 @@ impl<'a> SemanticAnalyzer<'a> {
         // TODO: Update function to recognize complex lvalue expressions
         match expression {
             Expression::Identifier(idname) => self
-                .symboltableref
-                .lookup(idname, *self.scopeidstack.last().unwrap())
+                .lookup_innermost_scope_symbol(idname)
                 .is_some_and(|symbol| !symbol.typeinfo.qualifiers.is_const),
             Expression::Constant(_) => false,
             _ => todo!(),

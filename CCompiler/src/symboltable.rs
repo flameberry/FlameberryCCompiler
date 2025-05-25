@@ -18,7 +18,7 @@ struct SymbolHashMapEntry {
     // Stores the indices of symbols defined in all scopes
     // Note: These indices are to be stored sorted in ascending order of their depth
     // ...so that binary search can be performed for every lookup
-    depthsortedindices: Vec<i32>,
+    depthsortedindices: Vec<usize>,
 }
 
 impl SymbolHashMapEntry {
@@ -29,14 +29,14 @@ impl SymbolHashMapEntry {
     }
 
     #[allow(clippy::comparison_chain)]
-    fn bsearch(&self, scopeid: u32, symbolbuffer: &[SymbolDefinition]) -> i32 {
+    fn bsearch(&self, scopeid: u32, symbolbuffer: &[SymbolDefinition]) -> Option<usize> {
         let mut beg = 0;
         let mut end = self.depthsortedindices.len() as i32 - 1;
         let mut mid = (beg + end) / 2;
         let mut probecount = 0;
 
         while beg <= end {
-            let midscopeid = symbolbuffer[self.depthsortedindices[mid as usize] as usize].scopeid;
+            let midscopeid = symbolbuffer[self.depthsortedindices[mid as usize]].scopeid;
             probecount += 1;
 
             if scopeid < midscopeid {
@@ -47,13 +47,13 @@ impl SymbolHashMapEntry {
                 mid = (beg + end) / 2;
             } else {
                 println!("Probe count for successfully searching symbol within scopes: {probecount}");
-                return self.depthsortedindices[mid as usize];
+                return Some(self.depthsortedindices[mid as usize]);
             }
         }
         println!("Probe count for unsuccessfully searching symbol within scopes: {probecount}");
 
-        // Return -1 indicating that symbol definition within the given scopeid was not found
-        -1
+        // Return None indicating that symbol definition within the given scopeid was not found
+        None
     }
 }
 
@@ -73,13 +73,10 @@ impl SymbolTable {
 
     /// Returns the symbol with the given name and the given scope ID
     pub fn lookup(&self, name: &str, scopeid: u32) -> Option<&SymbolDefinition> {
-        match self.hashmap.get(name) {
-            Some(entry) => match entry.bsearch(scopeid, &self.symbolbuffer) {
-                -1 => None,                                        // Return None when symbol not found
-                index => Some(&self.symbolbuffer[index as usize]), // Return symbol definition when found
-            },
-            None => None,
-        }
+        self.hashmap
+            .get(name)
+            .and_then(|entry| entry.bsearch(scopeid, &self.symbolbuffer))
+            .map(|index| &self.symbolbuffer[index])
     }
 
     /// Returns all symbols with the given name (Includes same symbol names from multiple scopes)
@@ -88,12 +85,11 @@ impl SymbolTable {
             entry
                 .depthsortedindices
                 .iter()
-                .map(|idx| self.symbolbuffer[*idx as usize].clone())
+                .map(|idx| self.symbolbuffer[*idx].clone())
                 .collect()
         })
     }
 
-    /// By default this looks up the symbol first then inserts it in a safe way
     pub fn insert(
         &mut self,
         name: &str,
@@ -102,7 +98,7 @@ impl SymbolTable {
         storageclass: StorageClassFlags,
         value: Option<Constant>,
     ) -> Result<(), CompilerError> {
-        let index = self.symbolbuffer.len() as i32;
+        let index = self.symbolbuffer.len();
 
         self.symbolbuffer.push(SymbolDefinition {
             typeinfo,
@@ -113,16 +109,16 @@ impl SymbolTable {
 
         if let Some(entry) = self.hashmap.get_mut(name) {
             match entry.bsearch(scopeid, &self.symbolbuffer) {
-                -1 => {
+                None => {
                     // Insert into the existing symbol table hash map entry
                     entry.depthsortedindices.push(index);
                     Ok(())
                 }
-                idx => Err(CompilerError {
+                Some(idx) => Err(CompilerError {
                     kind: CompilerErrorKind::InternalError,
                     message: format!(
                         "Failed to insert symbol: Duplicate Symbols are not allowed in the Symbol Table.\n{:?}",
-                        self.symbolbuffer[idx as usize]
+                        self.symbolbuffer[idx]
                     ),
                     location: None,
                 }),
@@ -151,7 +147,7 @@ impl fmt::Display for SymbolTable {
 
         for (symbolname, symboldef) in &self.hashmap {
             for idx in &symboldef.depthsortedindices {
-                let symbol = &self.symbolbuffer[*idx as usize];
+                let symbol = &self.symbolbuffer[*idx];
                 writeln!(
                     f,
                     "{0: <20} | {1: <20} | {2: <20} | {3: <20} | {4: <20}",

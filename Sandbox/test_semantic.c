@@ -10,6 +10,7 @@ int shadowed;
 
 int main() {
 	int shadowed;
+	char new_var = short_int_var + 1;
 	{
 		char shadowed;
 	}
