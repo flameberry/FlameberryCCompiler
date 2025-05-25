@@ -12,7 +12,7 @@ use super::node::Node;
 // For checking whether break, continue statements are inside any valid loops
 enum EvaluationContext {
     None,
-    Loop,
+    Loop(u32), // Stores the depth of the loop in case of nested loops
 }
 
 pub struct SemanticAnalyzer<'a> {
@@ -54,6 +54,21 @@ impl<'a> SemanticAnalyzer<'a> {
 
     fn pop_scope(&mut self) {
         self.scopeidstack.pop();
+    }
+
+    fn push_loop(&mut self) {
+        match self.evaluation_context {
+            EvaluationContext::None => self.evaluation_context = EvaluationContext::Loop(1),
+            EvaluationContext::Loop(depth) => self.evaluation_context = EvaluationContext::Loop(depth + 1),
+        }
+    }
+
+    fn pop_loop(&mut self) {
+        match self.evaluation_context {
+            EvaluationContext::None => panic!("pop_loop called when no loop has been pushed."),
+            EvaluationContext::Loop(1) => self.evaluation_context = EvaluationContext::None,
+            EvaluationContext::Loop(depth) => self.evaluation_context = EvaluationContext::Loop(depth - 1),
+        }
     }
 
     pub fn analyze(&mut self, translation_unit: &mut TranslationUnit) -> Result<(), CompilerError> {
@@ -134,7 +149,8 @@ impl<'a> SemanticAnalyzer<'a> {
             }
 
             Statement::ForStatement(for_stmt) => {
-                self.evaluation_context = EvaluationContext::Loop;
+                // This is done for verification of break and continue statements
+                self.push_loop();
 
                 // So understand this, I'm considering a for-loop itself consisting of 2 scopes:
                 //
@@ -196,12 +212,12 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 // Pop the scope id as we have exited the for-loop scope
                 self.pop_scope();
-                self.evaluation_context = EvaluationContext::None;
+
+                // This is done for verification of break and continue statements
+                self.pop_loop();
             }
 
             Statement::WhileStatement(while_stmt) | Statement::DoWhileStatement(while_stmt) => {
-                self.evaluation_context = EvaluationContext::Loop;
-
                 // 1. Evaluate condition and check if the type can evaluate into a boolean
                 let condition_type =
                     self.evaluate_expr(&mut while_stmt.expression.node, &while_stmt.expression.span)?;
@@ -227,10 +243,10 @@ impl<'a> SemanticAnalyzer<'a> {
                     }
                 }
 
+                self.push_loop();
                 // 2. Evaluate the while-loop body
                 self.evaluate_statement(&mut while_stmt.statement.node, expected_return_type)?;
-
-                self.evaluation_context = EvaluationContext::None;
+                self.pop_loop();
             }
 
             Statement::IfStatement(if_stmt) => {
@@ -268,7 +284,7 @@ impl<'a> SemanticAnalyzer<'a> {
             }
 
             Statement::BreakStatement | Statement::ContinueStatement => {
-                if !matches!(self.evaluation_context, EvaluationContext::Loop) {
+                if !matches!(self.evaluation_context, EvaluationContext::Loop(_)) {
                     let keyword = match statement {
                         Statement::BreakStatement => "break",
                         Statement::ContinueStatement => "continue",
