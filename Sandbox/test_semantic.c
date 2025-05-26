@@ -8,6 +8,13 @@ int long long const static weird;
 
 int shadowed;
 
+int factorial(int n) {
+	if (n == 0)
+		return 1;
+	return n - 2;
+	// return n * factorial(n - 1);
+}
+
 int main() {
 	int shadowed;
 	short_int_var += 1;
@@ -34,7 +41,7 @@ int main() {
 	int result = x * y;
 	float a = 20.23f;
 	char c = 'b';
-	int m = 10 + a, n = 10.0f - c;
+	int m = 10 + a, p = 10.0f - c;
 	int b = a;
 	return x + y + a + c;
 }

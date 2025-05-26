@@ -82,7 +82,7 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 
     fn evaluate_function_def(&mut self, function_def: &mut FunctionDefinition) -> Result<(), CompilerError> {
-        let Statement::CompoundStatement(_) = &mut function_def.body.node else {
+        let Statement::CompoundStatement(compound_stmt) = &mut function_def.body.node else {
             return Err(CompilerError {
                 kind: CompilerErrorKind::SemanticError,
                 message: "Function body must be a compound statement".to_string(),
@@ -90,8 +90,64 @@ impl<'a> SemanticAnalyzer<'a> {
             });
         };
 
+        // Get the return type from declaration specifiers using the function definition
         let (expected_return_type, _) = Type::from_declaration_specifiers(&function_def.specifiers)?;
-        self.evaluate_statement(&mut function_def.body.node, &expected_return_type)?;
+
+        // Note the scope outside the function
+        let scopeid: u32 = *self.scopeidstack.last().unwrap();
+        let mut param_types: Vec<Type> = Vec::new();
+
+        self.push_scope();
+
+        // Insert params as symbols in the symbol table belonging to the function scope
+        for param in &function_def.declarator.node.parameters {
+            let (param_type, param_storage_class) = Type::from_declaration_specifiers(&param.node.specifiers)?;
+
+            // 1. Push the param_type into the param_types vector, which will be needed for the
+            //    function symbol definition info
+            param_types.push(param_type.clone());
+
+            // 2. Insert the individual param as a separate symbol, to help evaluation of the
+            //    function body
+            if let Some(declarator) = &param.node.declarator {
+                match &declarator.node {
+                    Declarator::DirectDeclarator(idname) => {
+                        self.symboltableref.insert(
+                            idname.as_str(),
+                            *self.scopeidstack.last().unwrap(),
+                            param_type,
+                            param_storage_class,
+                            None,
+                        )?;
+                    }
+                    _ => todo!(),
+                }
+            }
+        }
+
+        // Construct the function signature
+        let function_type = Type::new(BaseType::Function {
+            return_type: Box::new(expected_return_type.clone()),
+            parameters: param_types,
+        });
+
+        // Insert the function itself as a symbol into the symbol table
+        self.symboltableref.insert(
+            function_def.declarator.node.identifier.as_str(),
+            scopeid,
+            function_type,
+            0,
+            None,
+        )?;
+
+        for blockitem in compound_stmt {
+            match &mut blockitem.node {
+                BlockItem::Declaration(declaration) => self.evaluate_declaration(declaration)?,
+                BlockItem::Statement(stmt) => self.evaluate_statement(stmt, &expected_return_type)?,
+            }
+        }
+
+        self.pop_scope();
         Ok(())
     }
 
@@ -484,23 +540,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     qualifiers: lhs_typeinfo.qualifiers,
                 })
             }
-            Expression::Identifier(idname) => {
-                // Tasks to be performed:
-                // 1. Check if idname is a valid symbol in the symboltable
-                // 2. Convert TypeName to TypeInfo
-                match self.lookup_innermost_scope_symbol(idname) {
-                    Some(symboldef) => Ok(symboldef.typeinfo.clone()),
-                    None => Err(CompilerError {
-                        kind: CompilerErrorKind::SemanticError,
-                        message: format!(
-                            "Unable to find the symbol named '{}' in any of the reachable scopes.",
-                            idname
-                        ),
-                        location: Some(span.start),
-                    }),
-                }
-            }
-            Expression::Constant(constant) => Ok(BaseType::from_constant(constant)),
+
             Expression::Comma(comma_exprs) => {
                 assert!(!comma_exprs.is_empty(), "Comma Expression vector can't be empty");
 
@@ -524,6 +564,26 @@ impl<'a> SemanticAnalyzer<'a> {
                 // For now this function returns the first comma expression's evaluated type
                 Ok(typeinfo)
             }
+
+            Expression::Identifier(idname) => {
+                // Tasks to be performed:
+                // 1. Check if idname is a valid symbol in the symboltable
+                // 2. Convert TypeName to TypeInfo
+                match self.lookup_innermost_scope_symbol(idname) {
+                    Some(symboldef) => Ok(symboldef.typeinfo.clone()),
+                    None => Err(CompilerError {
+                        kind: CompilerErrorKind::SemanticError,
+                        message: format!(
+                            "Unable to find the symbol named '{}' in any of the reachable scopes.",
+                            idname
+                        ),
+                        location: Some(span.start),
+                    }),
+                }
+            }
+
+            Expression::Constant(constant) => Ok(BaseType::from_constant(constant)),
+
             _ => todo!(),
         }
     }

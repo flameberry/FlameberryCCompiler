@@ -36,6 +36,11 @@ Flameberry C compiler is primitive C (ISO 17 standard compliant) compiler which 
         17. Generic Expression (which contains combinations of all the above expressions)
         18. Constant Expression
 4. Generation of basic Abstract Syntax Tree for the C Translation Unit
+5. Semantic Analysis:
+    1. Type Checking
+    2. Implicit Casting
+    3. Symbol Table
+    4. Variable Shadowing
 
 ## Demo
 

@@ -67,7 +67,6 @@ pub enum BaseType {
     Function {
         return_type: Box<Type>,
         parameters: Vec<Type>,
-        is_variadic: bool,
     },
     Struct {
         name: String,
@@ -510,15 +509,9 @@ impl fmt::Display for BaseType {
             BaseType::Function {
                 return_type,
                 parameters,
-                is_variadic,
             } => {
                 let params: Vec<String> = parameters.iter().map(|p| format!("{}", p)).collect();
-                let params_str = if *is_variadic {
-                    format!("{}, ...", params.join(", "))
-                } else {
-                    params.join(", ")
-                };
-                write!(f, "{}({})", return_type, params_str)
+                write!(f, "{}({})", return_type, params.join(", "))
             }
             BaseType::Struct { name, fields } => {
                 let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{}: {}", n, t)).collect();
