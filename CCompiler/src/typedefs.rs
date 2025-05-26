@@ -407,6 +407,11 @@ impl Type {
                     }
                 }
 
+                // NOTE: Big flaw this has is that _ matches with all other types, that means if
+                // two types are compared where one being let's say a function and other being
+                // a float, then they are labelled as convertible to each other using a cast, which
+                // is wrong.
+
                 // This statement matches long long with any lower type and promotes
                 // ...expression to long long
                 (BaseType::LongLong { signed }, _) | (_, BaseType::LongLong { signed }) => {

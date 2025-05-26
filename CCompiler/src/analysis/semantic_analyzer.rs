@@ -1,3 +1,5 @@
+use std::iter::zip;
+
 use crate::analysis::{ast::*, node::Span};
 use crate::errors::{CompilerError, CompilerErrorKind};
 use crate::symboltable::{SymbolDefinition, SymbolTable};
@@ -96,6 +98,12 @@ impl<'a> SemanticAnalyzer<'a> {
         // Note the scope outside the function
         let scopeid: u32 = *self.scopeidstack.last().unwrap();
         let mut param_types: Vec<Type> = Vec::new();
+
+        assert!(
+            scopeid == 0,
+            "Function definition found not inside a global scope: {}",
+            scopeid
+        );
 
         self.push_scope();
 
@@ -539,6 +547,56 @@ impl<'a> SemanticAnalyzer<'a> {
                     base_type: composite_type,
                     qualifiers: lhs_typeinfo.qualifiers,
                 })
+            }
+
+            Expression::Call(call_expr) => {
+                // Get the function signature
+                let callee_type = self.evaluate_expr(&mut call_expr.callee.node, span)?;
+
+                if let Type {
+                    base_type:
+                        BaseType::Function {
+                            return_type: _,
+                            parameters,
+                        },
+                    qualifiers: _,
+                } = &callee_type
+                {
+                    for (param, arg) in zip(parameters, call_expr.argument_expr_list.iter_mut()) {
+                        // 1. Evaluate argument expression type
+                        let arg_type = self.evaluate_expr(&mut arg.node, &arg.span)?;
+
+                        // 2. Compare the parameter type and argument type, and add an implicit
+                        //    cast if necessary
+                        match Type::compare(param, &arg_type) {
+                            TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
+
+                            TypeCompatibility::ImplicitConversion { .. } => {
+                                let temp_expr = std::mem::replace(&mut arg.node, Expression::Empty);
+
+                                arg.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
+                                    expression: temp_expr,
+                                    target_type: param.base_type.clone(),
+                                }));
+                            }
+
+                            TypeCompatibility::Incompatible => {
+                                return Err(CompilerError {
+                                    kind: CompilerErrorKind::SemanticError,
+                                    message: format!("Expected argument of type: {}, instead got {}", param, arg_type),
+                                    location: Some(arg.span.start),
+                                })
+                            }
+                        }
+                    }
+                    Ok(callee_type)
+                } else {
+                    Err(CompilerError {
+                        kind: CompilerErrorKind::SemanticError,
+                        message: format!("Called object type {} is not a function.", callee_type),
+                        location: Some(call_expr.callee.span.start),
+                    })
+                }
             }
 
             Expression::Comma(comma_exprs) => {

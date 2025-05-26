@@ -12,10 +12,19 @@ int factorial(int n) {
 	if (n == 0)
 		return 1;
 	return n - 2;
-	// return n * factorial(n - 1);
+	return n * factorial(n - 1);
+}
+
+float var;
+
+void func(double x) {
+	var += 10;
+	func(var);
 }
 
 int main() {
+	var(0);
+
 	int shadowed;
 	short_int_var += 1;
 	{
