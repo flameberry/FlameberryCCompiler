@@ -76,14 +76,14 @@ impl<'a> SemanticAnalyzer<'a> {
     pub fn analyze(&mut self, translation_unit: &mut TranslationUnit) -> Result<(), CompilerError> {
         for extdecl in &mut translation_unit.external_declarations {
             match &mut extdecl.node {
-                ExternalDeclaration::FunctionDefinition(funcdef) => self.evaluate_function_def(funcdef)?,
-                ExternalDeclaration::Declaration(declaration) => self.evaluate_declaration(declaration)?,
+                ExternalDeclaration::FunctionDefinition(funcdef) => self.validate_function_def(funcdef)?,
+                ExternalDeclaration::Declaration(declaration) => self.validate_declaration(declaration)?,
             }
         }
         Ok(())
     }
 
-    fn evaluate_function_def(&mut self, function_def: &mut FunctionDefinition) -> Result<(), CompilerError> {
+    fn validate_function_def(&mut self, function_def: &mut FunctionDefinition) -> Result<(), CompilerError> {
         let Statement::CompoundStatement(compound_stmt) = &mut function_def.body.node else {
             return Err(CompilerError {
                 kind: CompilerErrorKind::SemanticError,
@@ -150,8 +150,8 @@ impl<'a> SemanticAnalyzer<'a> {
 
         for blockitem in compound_stmt {
             match &mut blockitem.node {
-                BlockItem::Declaration(declaration) => self.evaluate_declaration(declaration)?,
-                BlockItem::Statement(stmt) => self.evaluate_statement(stmt, &expected_return_type)?,
+                BlockItem::Declaration(declaration) => self.validate_declaration(declaration)?,
+                BlockItem::Statement(stmt) => self.validate_statement(stmt, &expected_return_type)?,
             }
         }
 
@@ -159,7 +159,7 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    fn evaluate_statement(
+    fn validate_statement(
         &mut self,
         statement: &mut Statement,
         expected_return_type: &Type,
@@ -170,8 +170,8 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 for blockitem in compound_stmt {
                     match &mut blockitem.node {
-                        BlockItem::Declaration(declaration) => self.evaluate_declaration(declaration)?,
-                        BlockItem::Statement(stmt) => self.evaluate_statement(stmt, expected_return_type)?,
+                        BlockItem::Declaration(declaration) => self.validate_declaration(declaration)?,
+                        BlockItem::Statement(stmt) => self.validate_statement(stmt, expected_return_type)?,
                     }
                 }
 
@@ -179,7 +179,7 @@ impl<'a> SemanticAnalyzer<'a> {
             }
             Statement::ReturnStatement(return_stmt) => {
                 // Check if return type is same as the expected_return_type, if not check if it's castable
-                let return_type = self.evaluate_expr(&mut return_stmt.node, &return_stmt.span)?;
+                let return_type = self.validate_expr(&mut return_stmt.node, &return_stmt.span)?;
 
                 match Type::compare(&return_type, expected_return_type) {
                     TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
@@ -208,7 +208,7 @@ impl<'a> SemanticAnalyzer<'a> {
             }
             Statement::ExpressionStatement(expr_node) => {
                 if let Some(expression) = expr_node {
-                    self.evaluate_expr(&mut expression.node, &expression.span)?;
+                    self.validate_expr(&mut expression.node, &expression.span)?;
                 }
             }
 
@@ -232,14 +232,14 @@ impl<'a> SemanticAnalyzer<'a> {
                 match &mut for_stmt.initializer.node {
                     ForInitializer::Empty => {}
                     ForInitializer::Expression(expression) => {
-                        self.evaluate_expr(expression, &for_stmt.initializer.span)?;
+                        self.validate_expr(expression, &for_stmt.initializer.span)?;
                     }
-                    ForInitializer::Declaration(declaration) => self.evaluate_declaration(declaration)?,
+                    ForInitializer::Declaration(declaration) => self.validate_declaration(declaration)?,
                 }
 
                 // 2. Evaluate condition and check if the type can evaluate into a boolean
                 if let Some(condition) = &mut for_stmt.condition {
-                    let condition_type = self.evaluate_expr(&mut condition.node, &condition.span)?;
+                    let condition_type = self.validate_expr(&mut condition.node, &condition.span)?;
 
                     match Type::compare(&condition_type, &Type::new(BaseType::Bool)) {
                         TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
@@ -268,11 +268,11 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 // 3. Evaluate step statement of for-loop
                 if let Some(step_expr) = &mut for_stmt.step {
-                    self.evaluate_expr(&mut step_expr.node, &step_expr.span)?;
+                    self.validate_expr(&mut step_expr.node, &step_expr.span)?;
                 }
 
                 // 4. Evaluate the for-loop body
-                self.evaluate_statement(&mut for_stmt.statement.node, expected_return_type)?;
+                self.validate_statement(&mut for_stmt.statement.node, expected_return_type)?;
 
                 // Pop the scope id as we have exited the for-loop scope
                 self.pop_scope();
@@ -284,7 +284,7 @@ impl<'a> SemanticAnalyzer<'a> {
             Statement::WhileStatement(while_stmt) | Statement::DoWhileStatement(while_stmt) => {
                 // 1. Evaluate condition and check if the type can evaluate into a boolean
                 let condition_type =
-                    self.evaluate_expr(&mut while_stmt.expression.node, &while_stmt.expression.span)?;
+                    self.validate_expr(&mut while_stmt.expression.node, &while_stmt.expression.span)?;
 
                 match Type::compare(&condition_type, &Type::new(BaseType::Bool)) {
                     TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
@@ -309,13 +309,13 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 self.push_loop();
                 // 2. Evaluate the while-loop body
-                self.evaluate_statement(&mut while_stmt.statement.node, expected_return_type)?;
+                self.validate_statement(&mut while_stmt.statement.node, expected_return_type)?;
                 self.pop_loop();
             }
 
             Statement::IfStatement(if_stmt) => {
                 // 1. Evaluate condition and check if the type can evaluate into a boolean
-                let condition_type = self.evaluate_expr(&mut if_stmt.expression.node, &if_stmt.expression.span)?;
+                let condition_type = self.validate_expr(&mut if_stmt.expression.node, &if_stmt.expression.span)?;
 
                 match Type::compare(&condition_type, &Type::new(BaseType::Bool)) {
                     TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
@@ -339,11 +339,11 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
 
                 // 2. Evaluate the if-statement body
-                self.evaluate_statement(&mut if_stmt.if_block.node, expected_return_type)?;
+                self.validate_statement(&mut if_stmt.if_block.node, expected_return_type)?;
 
                 // 3. Evaluate the else-statement body if it exists
                 if let Some(else_block) = &mut if_stmt.else_block {
-                    self.evaluate_statement(&mut else_block.node, expected_return_type)?;
+                    self.validate_statement(&mut else_block.node, expected_return_type)?;
                 }
             }
 
@@ -368,7 +368,7 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    fn evaluate_declaration(&mut self, declaration: &mut Declaration) -> Result<(), CompilerError> {
+    fn validate_declaration(&mut self, declaration: &mut Declaration) -> Result<(), CompilerError> {
         for init_decl in &mut declaration.init_declarators {
             // 1. Convert set of declaration specifiers to an actual type
             let (declaration_type, storage_class) = Type::from_declaration_specifiers(&declaration.specifiers)?;
@@ -377,7 +377,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 match &mut init_node.node {
                     Initializer::AssignmentExpression(asgn_expr) => {
                         // Evaluate the Type of the assignment expression
-                        let rhs_typeinfo = self.evaluate_expr(asgn_expr, &init_node.span)?;
+                        let rhs_typeinfo = self.validate_expr(asgn_expr, &init_node.span)?;
 
                         // 2. Check if the expression type is compatible with the declaration type
                         match Type::compare(&declaration_type, &rhs_typeinfo) {
@@ -437,7 +437,7 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    fn evaluate_expr(&self, expression: &mut Expression, span: &Span) -> Result<Type, CompilerError> {
+    fn validate_expr(&self, expression: &mut Expression, span: &Span) -> Result<Type, CompilerError> {
         // Tasks to be performed:
         // 1. Check whether any variables used in expression are defined in the symbol table
         // 2. Check whether the type of the variables is compatible with each other
@@ -449,8 +449,8 @@ impl<'a> SemanticAnalyzer<'a> {
         match expression {
             Expression::BinaryOperator(binary_expr) => {
                 // 1. Evaluate LHS and RHS type
-                let lhs_typeinfo = self.evaluate_expr(&mut binary_expr.lhs.node, &binary_expr.lhs.span)?;
-                let rhs_typeinfo = self.evaluate_expr(&mut binary_expr.rhs.node, &binary_expr.rhs.span)?;
+                let lhs_typeinfo = self.validate_expr(&mut binary_expr.lhs.node, &binary_expr.lhs.span)?;
+                let rhs_typeinfo = self.validate_expr(&mut binary_expr.rhs.node, &binary_expr.rhs.span)?;
                 let composite_type: BaseType;
 
                 // 2. Get Common Type between the operands
@@ -551,7 +551,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
             Expression::Call(call_expr) => {
                 // Get the function signature
-                let callee_type = self.evaluate_expr(&mut call_expr.callee.node, span)?;
+                let callee_type = self.validate_expr(&mut call_expr.callee.node, span)?;
 
                 if let Type {
                     base_type:
@@ -564,7 +564,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 {
                     for (param, arg) in zip(parameters, call_expr.argument_expr_list.iter_mut()) {
                         // 1. Evaluate argument expression type
-                        let arg_type = self.evaluate_expr(&mut arg.node, &arg.span)?;
+                        let arg_type = self.validate_expr(&mut arg.node, &arg.span)?;
 
                         // 2. Compare the parameter type and argument type, and add an implicit
                         //    cast if necessary
@@ -614,7 +614,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 // Above is a valid statement
                 for comma_expr in comma_exprs.iter_mut() {
                     if first {
-                        typeinfo = self.evaluate_expr(&mut comma_expr.node, &comma_expr.span)?;
+                        typeinfo = self.validate_expr(&mut comma_expr.node, &comma_expr.span)?;
                         first = false;
                     }
                 }
