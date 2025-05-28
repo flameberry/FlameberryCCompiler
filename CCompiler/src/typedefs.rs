@@ -143,6 +143,18 @@ impl BaseType {
             _ => false,
         }
     }
+
+    fn is_integer_type(&self) -> bool {
+        matches!(
+            self,
+            BaseType::Bool
+                | BaseType::Char { .. }
+                | BaseType::Short { .. }
+                | BaseType::Int { .. }
+                | BaseType::Long { .. }
+                | BaseType::LongLong { .. }
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -378,77 +390,81 @@ impl Type {
                 };
             }
 
-            // Integer Promotion Rules
-            match (&x.base_type, &y.base_type) {
-                // This statement matches signed long long with unsigned long long and promotes
-                // ...expression to unsigned long long
-                (BaseType::LongLong { signed: true }, BaseType::LongLong { signed: false })
-                | (BaseType::LongLong { signed: false }, BaseType::LongLong { signed: true }) => {
-                    TypeCompatibility::ImplicitConversion {
-                        base_type: BaseType::LongLong { signed: false },
+            if x.base_type.is_integer_type() && y.base_type.is_integer_type() {
+                // Integer Promotion Rules
+                match (&x.base_type, &y.base_type) {
+                    // This statement matches signed long long with unsigned long long and promotes
+                    // ...expression to unsigned long long
+                    (BaseType::LongLong { signed: true }, BaseType::LongLong { signed: false })
+                    | (BaseType::LongLong { signed: false }, BaseType::LongLong { signed: true }) => {
+                        TypeCompatibility::ImplicitConversion {
+                            base_type: BaseType::LongLong { signed: false },
+                        }
                     }
-                }
 
-                // This statement matches signed long with unsigned long and promotes
-                // ...expression to unsigned long
-                (BaseType::Long { signed: true }, BaseType::Long { signed: false })
-                | (BaseType::Long { signed: false }, BaseType::Long { signed: true }) => {
-                    TypeCompatibility::ImplicitConversion {
-                        base_type: BaseType::Long { signed: false },
+                    // This statement matches signed long with unsigned long and promotes
+                    // ...expression to unsigned long
+                    (BaseType::Long { signed: true }, BaseType::Long { signed: false })
+                    | (BaseType::Long { signed: false }, BaseType::Long { signed: true }) => {
+                        TypeCompatibility::ImplicitConversion {
+                            base_type: BaseType::Long { signed: false },
+                        }
                     }
-                }
 
-                // This statement matches signed int with unsigned int and promotes
-                // ...expression to unsigned int
-                (BaseType::Int { signed: true }, BaseType::Int { signed: false })
-                | (BaseType::Int { signed: false }, BaseType::Int { signed: true }) => {
-                    TypeCompatibility::ImplicitConversion {
-                        base_type: BaseType::Int { signed: false },
+                    // This statement matches signed int with unsigned int and promotes
+                    // ...expression to unsigned int
+                    (BaseType::Int { signed: true }, BaseType::Int { signed: false })
+                    | (BaseType::Int { signed: false }, BaseType::Int { signed: true }) => {
+                        TypeCompatibility::ImplicitConversion {
+                            base_type: BaseType::Int { signed: false },
+                        }
                     }
-                }
 
-                // NOTE: Big flaw this has is that _ matches with all other types, that means if
-                // two types are compared where one being let's say a function and other being
-                // a float, then they are labelled as convertible to each other using a cast, which
-                // is wrong.
+                    // NOTE: Big flaw this has is that _ matches with all other types, that means if
+                    // two types are compared where one being let's say a function and other being
+                    // a float, then they are labelled as convertible to each other using a cast, which
+                    // is wrong.
 
-                // This statement matches long long with any lower type and promotes
-                // ...expression to long long
-                (BaseType::LongLong { signed }, _) | (_, BaseType::LongLong { signed }) => {
-                    TypeCompatibility::ImplicitConversion {
-                        base_type: BaseType::LongLong { signed: *signed },
+                    // This statement matches long long with any lower type and promotes
+                    // ...expression to long long
+                    (BaseType::LongLong { signed }, _) | (_, BaseType::LongLong { signed }) => {
+                        TypeCompatibility::ImplicitConversion {
+                            base_type: BaseType::LongLong { signed: *signed },
+                        }
                     }
-                }
 
-                // This statement matches long with any lower type and promotes
-                // ...expression to long
-                (BaseType::Long { signed }, _) | (_, BaseType::Long { signed }) => {
-                    TypeCompatibility::ImplicitConversion {
-                        base_type: BaseType::Long { signed: *signed },
+                    // This statement matches long with any lower type and promotes
+                    // ...expression to long
+                    (BaseType::Long { signed }, _) | (_, BaseType::Long { signed }) => {
+                        TypeCompatibility::ImplicitConversion {
+                            base_type: BaseType::Long { signed: *signed },
+                        }
                     }
-                }
 
-                // This statement matches int with any lower type and promotes
-                // ...expression to int
-                (BaseType::Int { signed }, _) | (_, BaseType::Int { signed }) => {
-                    TypeCompatibility::ImplicitConversion {
+                    // This statement matches int with any lower type and promotes
+                    // ...expression to int
+                    (BaseType::Int { signed }, _) | (_, BaseType::Int { signed }) => {
+                        TypeCompatibility::ImplicitConversion {
+                            base_type: BaseType::Int { signed: *signed },
+                        }
+                    }
+
+                    // This statement promotes any type combinations which are below int to int
+                    (BaseType::Char { signed }, _)
+                    | (_, BaseType::Char { signed })
+                    | (BaseType::Short { signed }, _)
+                    | (_, BaseType::Short { signed }) => TypeCompatibility::ImplicitConversion {
                         base_type: BaseType::Int { signed: *signed },
-                    }
+                    },
+
+                    // No operation can be done on void types without explicitly casting them
+                    (BaseType::Void, _) | (_, BaseType::Void) => TypeCompatibility::Incompatible,
+
+                    // According to the current implementation the types are not compatible ----------------------
+                    _ => unreachable!(),
                 }
-
-                // This statement promotes any type combinations which are below int to int
-                (BaseType::Char { signed }, _)
-                | (_, BaseType::Char { signed })
-                | (BaseType::Short { signed }, _)
-                | (_, BaseType::Short { signed }) => TypeCompatibility::ImplicitConversion {
-                    base_type: BaseType::Int { signed: *signed },
-                },
-
-                // No operation can be done on void types without explicitly casting them
-                (BaseType::Void, _) | (_, BaseType::Void) => TypeCompatibility::Incompatible,
-
-                // According to the current implementation the types are not compatible ----------------------
-                _ => TypeCompatibility::Incompatible,
+            } else {
+                TypeCompatibility::Incompatible
             }
         }
     }

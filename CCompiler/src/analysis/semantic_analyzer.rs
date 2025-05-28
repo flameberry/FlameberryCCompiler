@@ -520,8 +520,8 @@ impl<'a> SemanticAnalyzer<'a> {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::SemanticError,
                             message: format!(
-                                "Incompatible Types provided to binary expression: {:?}",
-                                binary_expr.operator.node
+                                "Incompatible Types provided to binary expression: {:?} => {} and {}",
+                                binary_expr.operator.node, lhs_typeinfo, rhs_typeinfo
                             ),
                             location: Some(binary_expr.operator.span.start),
                         })
@@ -556,7 +556,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 if let Type {
                     base_type:
                         BaseType::Function {
-                            return_type: _,
+                            return_type,
                             parameters,
                         },
                     qualifiers: _,
@@ -589,7 +589,7 @@ impl<'a> SemanticAnalyzer<'a> {
                             }
                         }
                     }
-                    Ok(callee_type)
+                    Ok(return_type.as_ref().clone())
                 } else {
                     Err(CompilerError {
                         kind: CompilerErrorKind::SemanticError,

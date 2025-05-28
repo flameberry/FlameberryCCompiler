@@ -11,7 +11,6 @@ int shadowed;
 int factorial(int n) {
 	if (n == 0)
 		return 1;
-	return n - 2;
 	return n * factorial(n - 1);
 }
 
@@ -23,8 +22,6 @@ void func(double x) {
 }
 
 int main() {
-	var(0);
-
 	int shadowed;
 	short_int_var += 1;
 	{
