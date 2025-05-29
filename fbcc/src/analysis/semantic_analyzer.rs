@@ -1,9 +1,9 @@
 use std::iter::zip;
 
 use crate::analysis::{ast::*, node::Span};
-use crate::errors::{CompilerError, CompilerErrorKind};
-use crate::symboltable::{SymbolDefinition, SymbolTable};
-use crate::typedefs::{BaseType, Type, TypeCompatibility, TypeQualifiers};
+use crate::common::errors::{CompilerError, CompilerErrorKind};
+use crate::common::symboltable::{SymbolDefinition, SymbolTable};
+use crate::common::typedefs::{BaseType, Type, TypeCompatibility, TypeQualifiers};
 
 use super::node::Node;
 

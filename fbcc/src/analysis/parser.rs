@@ -2,10 +2,10 @@
 
 use crate::analysis::node::{FileLocation, Node, Span};
 use crate::analysis::tokenizer::{Keyword, TokenType, Tokenizer};
-use crate::errors::{CompilerError, CompilerErrorKind};
+use crate::common::errors::{CompilerError, CompilerErrorKind};
 
 use crate::analysis::ast::*;
-use crate::typedefs::*;
+use crate::common::typedefs::*;
 
 /// Maps TokenType::Keyword -> SpecifierQualifier
 fn keyword2specifierqualifier(keyword: &Keyword) -> Option<SpecifierQualifier> {

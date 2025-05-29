@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::analysis::ast::StorageClassFlags;
-use crate::errors::{CompilerError, CompilerErrorKind};
-use crate::typedefs::{Constant, Type};
+use crate::common::errors::{CompilerError, CompilerErrorKind};
+use crate::common::typedefs::{Constant, Type};
 
 #[derive(Debug, Clone)]
 pub struct SymbolDefinition {
@@ -33,11 +33,9 @@ impl SymbolHashMapEntry {
         let mut beg = 0;
         let mut end = self.depthsortedindices.len() as i32 - 1;
         let mut mid = (beg + end) / 2;
-        let mut probecount = 0;
 
         while beg <= end {
             let midscopeid = symbolbuffer[self.depthsortedindices[mid as usize]].scopeid;
-            probecount += 1;
 
             if scopeid < midscopeid {
                 end = mid - 1;
@@ -46,11 +44,9 @@ impl SymbolHashMapEntry {
                 beg = mid + 1;
                 mid = (beg + end) / 2;
             } else {
-                println!("Probe count for successfully searching symbol within scopes: {probecount}");
                 return Some(self.depthsortedindices[mid as usize]);
             }
         }
-        println!("Probe count for unsuccessfully searching symbol within scopes: {probecount}");
 
         // Return None indicating that symbol definition within the given scopeid was not found
         None

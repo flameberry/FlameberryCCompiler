@@ -1,6 +1,6 @@
 use {
     crate::analysis::node::{FileLocation, Node, Span},
-    crate::typedefs::*,
+    crate::common::typedefs::*,
     debug_tree::*,
     std::fmt,
 };

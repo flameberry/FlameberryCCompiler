@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::analysis::ast::{DeclarationSpecifier, StorageClassFlags, TypeName, TypeQualifier, TypeSpecifier};
 use crate::analysis::node::Node;
-use crate::errors::{CompilerError, CompilerErrorKind};
+use crate::common::errors::{CompilerError, CompilerErrorKind};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum IntegerType {

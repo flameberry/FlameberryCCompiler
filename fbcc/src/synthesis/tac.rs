@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::{analysis::ast::*, errors::CompilerError, typedefs::*};
+use crate::{analysis::ast::*, common::errors::CompilerError};
 
 #[derive(Debug)]
 pub enum TAC {

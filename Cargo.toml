@@ -1,16 +1,6 @@
-[package]
-name = "FlameberryCCompiler"
-version = "0.1.0"
-edition = "2021"
-
-[[bin]]
-name = "main"
-path = "CCompiler/src/main.rs"
-
-[lib]
-name = "flameberrycc"
-path = "CCompiler/src/lib.rs"
-
-[dependencies]
-debug_tree = "0.4.0"
-regex = "1.10.3"
+[workspace]
+members = [
+    "cli",
+    "fbcc"
+]
+resolver = "2"
