@@ -1,54 +1,54 @@
 use std::{fmt, ops::Add};
 
 #[derive(Debug, Copy, Clone)]
-pub struct FileLocation {
-    line: usize,   // The line number in the source code
-    column: usize, // The offset from the start of the line
+pub struct Location {
+    pub line: usize,   // The line number in the source code
+    pub column: usize, // The offset from the start of the line
 }
 
-impl fmt::Display for FileLocation {
+impl fmt::Display for Location {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.line, self.column)
     }
 }
 
-impl Add for FileLocation {
+impl Add for Location {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        FileLocation {
+        Location {
             line: self.line + rhs.line,
             column: self.column + rhs.column,
         }
     }
 }
 
-impl FileLocation {
+impl Location {
     pub fn none() -> Self {
-        FileLocation { line: 0, column: 0 }
+        Location { line: 0, column: 0 }
     }
 
     pub fn new(line: usize, column: usize) -> Self {
-        FileLocation { line, column }
+        Location { line, column }
     }
 }
 
 // Byte offset in the input buffer
 #[derive(Debug, Copy, Clone)]
 pub struct Span {
-    pub start: FileLocation,
-    pub end: FileLocation,
+    pub start: Location,
+    pub end: Location,
 }
 
 impl Span {
-    pub fn new(start: FileLocation, end: FileLocation) -> Self {
+    pub fn new(start: Location, end: Location) -> Self {
         Span { start, end }
     }
 
     pub fn none() -> Self {
         Span {
-            start: FileLocation::none(),
-            end: FileLocation::none(),
+            start: Location::none(),
+            end: Location::none(),
         }
     }
 }

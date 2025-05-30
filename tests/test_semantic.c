@@ -22,8 +22,6 @@ void func(double x) {
 }
 
 int main() {
-	int shadowed;
-	short_int_var += 1;
 	{
 		char shadowed;
 		do {

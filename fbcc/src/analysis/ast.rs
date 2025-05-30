@@ -1,5 +1,5 @@
 use {
-    crate::analysis::node::{FileLocation, Node, Span},
+    crate::analysis::node::{Location, Node, Span},
     crate::common::typedefs::*,
     debug_tree::*,
     std::fmt,
@@ -760,10 +760,7 @@ pub fn display_funcdeclarator(declarator: &FunctionDeclarator, span: Span) {
     add_leaf!(
         "Identifier -> \"{}\" {}",
         declarator.identifier,
-        Span::new(
-            span.start,
-            span.start + FileLocation::new(declarator.identifier.len(), 0)
-        )
+        Span::new(span.start, span.start + Location::new(declarator.identifier.len(), 0))
     );
 
     // Add Parameters
@@ -820,7 +817,6 @@ pub fn display_declaration(declaration: &Declaration, span: &Span) {
     }
 }
 
-// TODO: Have this be debug mode only
 pub fn display_translationunit(tunit: &TranslationUnit) {
     defer_print!();
     add_branch!("TranslationUnit");

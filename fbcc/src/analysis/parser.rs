@@ -1,6 +1,6 @@
 //! Module for parsing the tokenized code into an AST tree according to the C17 standard.
 
-use crate::analysis::node::{FileLocation, Node, Span};
+use crate::analysis::node::{Location, Node, Span};
 use crate::analysis::tokenizer::{Keyword, TokenType, Tokenizer};
 use crate::common::errors::{CompilerError, CompilerErrorKind};
 
@@ -482,7 +482,6 @@ impl<'a> Parser<'a> {
                 // Parse the parameter list
                 _ => {
                     let mut parameters = Vec::new();
-
                     let mut expect_parameter = false;
 
                     while !matches!(self.tokenizer.peek_token()?, Some((TokenType::CloseParenthesis, _, _))) {
@@ -1734,7 +1733,7 @@ impl<'a> Parser<'a> {
         //      unary-expression
         //      ( type-name ) cast-expression
         let mut typenames: Vec<Node<TypeName>> = Vec::new();
-        let mut start_arr: Vec<FileLocation> = Vec::new();
+        let mut start_arr: Vec<Location> = Vec::new();
 
         while let Some((TokenType::OpenParenthesis, paren_start, _)) = self.tokenizer.peek_token()? {
             // Consume the `(`
@@ -2013,7 +2012,7 @@ impl<'a> Parser<'a> {
     fn parse_postfix_operators_with_init_expr(
         &mut self,
         mut expression: Node<Expression>,
-        expr_start: FileLocation,
+        expr_start: Location,
     ) -> Result<Node<Expression>, CompilerError> {
         // postfix-expression:
         //      primary-expression
@@ -2300,7 +2299,7 @@ impl<'a> Parser<'a> {
 
     /// Forces the next token to be the given `tokentype`
     /// Returns (start, end) both being character indices in the file
-    fn accept_token(&mut self, tokentype: TokenType) -> Result<(FileLocation, FileLocation), CompilerError> {
+    fn accept_token(&mut self, tokentype: TokenType) -> Result<(Location, Location), CompilerError> {
         match self.tokenizer.next_token()? {
             Some((token, start, end)) => {
                 if token == tokentype {

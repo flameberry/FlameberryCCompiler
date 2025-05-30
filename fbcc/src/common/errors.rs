@@ -1,7 +1,5 @@
+use crate::analysis::node::Location;
 use core::fmt;
-use std::error::Error;
-
-use crate::analysis::node::FileLocation;
 
 #[derive(Debug)]
 pub enum CompilerErrorKind {
@@ -15,10 +13,8 @@ pub enum CompilerErrorKind {
 pub struct CompilerError {
     pub kind: CompilerErrorKind,
     pub message: String,
-    pub location: Option<FileLocation>, // For now the location only contains the character index optionally
+    pub location: Option<Location>,
 }
-
-impl Error for CompilerError {}
 
 impl fmt::Display for CompilerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

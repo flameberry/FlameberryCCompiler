@@ -1,6 +1,6 @@
 //! Module for performing lexical analysis on source code.
 use crate::{
-    analysis::node::FileLocation,
+    analysis::node::Location,
     common::errors::{CompilerError, CompilerErrorKind},
     common::typedefs::*,
 };
@@ -113,19 +113,9 @@ pub enum TokenType {
     Comma,                     // ,
 }
 
-// type Token = (TokenType, usize, usize);
-//   ^^       ^^         ^^     ^^ Token End
-//   Alias    Token      Token Start
-
-type Token = (TokenType, FileLocation, FileLocation);
+type Token = (TokenType, Location, Location);
 //   ^^       ^^         ^^             ^^
 //   Alias    Token      Token Start      Token End
-
-// struct Token {
-//     tokentype: TokenType,
-//     start: TokenPosition,
-//     end: TokenPosition,
-// }
 
 /// Iterates the src string as long as the given predicate is satisfied.
 /// Returns the sliced string which satisfied the predicate and also the number of characters in it
@@ -161,7 +151,7 @@ impl Default for Tokenizer<'_> {
         Tokenizer {
             cidx: 0,
             srcbuffer: "",
-            peekedtoken: (TokenType::None, FileLocation::none(), FileLocation::none()),
+            peekedtoken: (TokenType::None, Location::none(), Location::none()),
             peekedbytes: 0,
             peeked_linerow: 0,
             peeked_linecol: 0,
@@ -177,7 +167,7 @@ impl<'a> Tokenizer<'a> {
         Tokenizer {
             cidx: 0,
             srcbuffer: src,
-            peekedtoken: (TokenType::None, FileLocation::none(), FileLocation::none()),
+            peekedtoken: (TokenType::None, Location::none(), Location::none()),
             peekedbytes: 0,
             peeked_linerow: 1,
             peeked_linecol: 1,
@@ -252,8 +242,8 @@ impl<'a> Tokenizer<'a> {
             self.peekedbytes = skipped_bytes + bytes;
             self.peekedtoken = (
                 token,
-                FileLocation::new(self.peeked_linerow, self.peeked_linecol - bytes),
-                FileLocation::new(self.peeked_linerow, self.peeked_linecol),
+                Location::new(self.peeked_linerow, self.peeked_linecol - bytes),
+                Location::new(self.peeked_linerow, self.peeked_linecol),
             );
 
             // Return the newly parsed token instead of parsing the srcbuffer again
@@ -278,7 +268,7 @@ impl<'a> Tokenizer<'a> {
             let peekedtoken = self.peekedtoken.clone(); // Is this optimal?
 
             // Reset the peeked token info
-            self.peekedtoken = (TokenType::None, FileLocation::none(), FileLocation::none());
+            self.peekedtoken = (TokenType::None, Location::none(), Location::none());
             self.peekedbytes = 0;
 
             // Return the already stored token instead of parsing the srcbuffer again
@@ -303,8 +293,8 @@ impl<'a> Tokenizer<'a> {
             // Return the newly parsed token with it's start and end information
             Ok(Some((
                 token,
-                FileLocation::new(self.linerow, self.linecol - bytes),
-                FileLocation::new(self.linerow, self.linecol),
+                Location::new(self.linerow, self.linecol - bytes),
+                Location::new(self.linerow, self.linecol),
             )))
         }
     }
@@ -313,8 +303,8 @@ impl<'a> Tokenizer<'a> {
         self.cidx
     }
 
-    pub fn get_lineinfo(&self) -> FileLocation {
-        FileLocation::new(self.linerow, self.linecol)
+    pub fn get_lineinfo(&self) -> Location {
+        Location::new(self.linerow, self.linecol)
     }
 
     fn skip_comments(&mut self) {
