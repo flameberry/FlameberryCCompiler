@@ -1,6 +1,6 @@
 # Flameberry C Compiler (Written in Rust)
 
-Flameberry C compiler is primitive C (ISO 17 standard compliant) compiler which is in early stages and the future plan is to make it a fully featured compiler with decent performance.
+Flameberry C compiler is primitive C (somewhat ISO 17 standard compliant) compiler which is in early stages and the future plan is to make it a fully featured compiler with decent performance.
 
 **Currently it supports:**
 
@@ -779,34 +779,10 @@ TranslationUnit
 
 ## Getting Started
 
-To build the rust project:
+To run the command line tool:
 
 ```sh
-cargo build
+cargo run -- --dump-ast <path/to/source/file>
 ```
 
-Before running the main.rs, don't forget to set the path where your C programs are located (_This will be abstracted in the future and a script will be provided to do the same instead of needing to modify the rust program itself_):
-
-```rust
-fn main() {
-    let testpath = "<path/to/parent/directory/containing/c/programs>";
-    run_tests(testpath);
-}
-```
-
-Or if you want to test using a single file:
-
-```rust
-fn main() {
-    let test_path = "Sandbox/test.c";
-    compile_file(test_path);
-}
-```
-
-To run the project:
-
-```sh
-cargo run
-```
-
-_Note: The repository currently uses test programs present in the repository https://github.com/nlsandler/writing-a-c-compiler-tests to check the output._
+Use the `--dump-ast` option to display the Abstract Syntax Tree of the given program.

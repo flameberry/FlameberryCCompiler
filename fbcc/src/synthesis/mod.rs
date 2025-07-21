@@ -1,2 +1,2 @@
 pub mod assembly;
-pub mod tac;
+pub mod ir;

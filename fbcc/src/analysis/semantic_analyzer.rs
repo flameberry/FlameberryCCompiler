@@ -206,6 +206,7 @@ impl<'a> SemanticAnalyzer<'a> {
                     }
                 }
             }
+
             Statement::ExpressionStatement(expr_node) => {
                 if let Some(expression) = expr_node {
                     self.validate_expr(&mut expression.node, &expression.span)?;

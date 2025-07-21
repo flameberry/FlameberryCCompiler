@@ -45,7 +45,7 @@ fn parse_cli(args: Vec<String>) -> Result<CliOptions, io::Error> {
     Ok(cli_options)
 }
 
-pub fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
+fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
     let (line, col) = error.location.map_or((0, 0), |loc| (loc.line, loc.column));
     let file = path.display();
     let mut out = String::new();

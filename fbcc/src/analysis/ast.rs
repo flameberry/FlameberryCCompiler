@@ -66,6 +66,15 @@ pub enum UnaryOperator {
     Negate,
 }
 
+#[derive(Debug)]
+enum BinaryOperatorCategory {
+    Assignment,
+    Comparison,
+    Arithmetic,
+    Logical,
+    Bitwise,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOperator {
     /// `lhs[rhs]`
@@ -188,7 +197,7 @@ pub enum Expression {
     #[default]
     Empty,
 
-    Identifier(String), // TODO: This should be a pointer to the symbol table entry of the identifier
+    Identifier(String),
     Constant(Constant),
     StringLiteral(String),
     UnaryOperator(Box<UnaryOperatorExpression>),

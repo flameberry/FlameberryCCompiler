@@ -3,7 +3,7 @@ use core::fmt;
 use crate::{analysis::ast::*, common::errors::CompilerError};
 
 #[derive(Debug)]
-pub enum TAC {
+pub enum IrOperation {
     Assign {
         target: String,
         left: String,
@@ -36,27 +36,27 @@ pub enum TAC {
     EndFunction,
 }
 
-impl fmt::Display for TAC {
+impl fmt::Display for IrOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TAC::Assign {
+            IrOperation::Assign {
                 target,
                 left,
                 right,
                 operator,
             } => write!(f, "{} = {} {:?} {}", target, left, operator, right),
-            TAC::IfGoto { condition, label } => {
+            IrOperation::IfGoto { condition, label } => {
                 write!(f, "If ({} <= 0) goto({})", condition, label)
             }
-            TAC::Goto { label } => write!(f, "goto ({})", label),
-            TAC::Return { result } => write!(f, "return {}", result),
+            IrOperation::Goto { label } => write!(f, "goto ({})", label),
+            IrOperation::Return { result } => write!(f, "return {}", result),
             _ => todo!(),
         }
     }
 }
 
-pub fn generate_tac(translation_unit: &TranslationUnit) -> Result<Vec<TAC>, CompilerError> {
-    let mut tac = Vec::new();
+pub fn generate_ir(translation_unit: &TranslationUnit) -> Result<Vec<IrOperation>, CompilerError> {
+    let mut ir = Vec::new();
 
     for extdecl in translation_unit.external_declarations.iter() {
         match &extdecl.node {
@@ -68,8 +68,8 @@ pub fn generate_tac(translation_unit: &TranslationUnit) -> Result<Vec<TAC>, Comp
                                 match &initializer.node {
                                     Initializer::AssignmentExpression(expr) => {
                                         let target = identifier;
-                                        let right = generate_tac_expr(&expr, &mut tac)?;
-                                        tac.push(TAC::Assign {
+                                        let right = generate_ir_expr(&expr, &mut ir)?;
+                                        ir.push(IrOperation::Assign {
                                             target: target.to_string(),
                                             left: "".to_string(),
                                             right,
@@ -86,52 +86,52 @@ pub fn generate_tac(translation_unit: &TranslationUnit) -> Result<Vec<TAC>, Comp
                 }
             }
             ExternalDeclaration::FunctionDefinition(funcdef) => {
-                generate_tac_stmt(&funcdef.body.node, &mut tac)?;
+                generate_ir_stmt(&funcdef.body.node, &mut ir)?;
             }
         }
     }
-    Ok(tac)
+    Ok(ir)
 }
 
-fn generate_tac_stmt(statement: &Statement, out_tacvec: &mut Vec<TAC>) -> Result<Option<String>, CompilerError> {
+fn generate_ir_stmt(statement: &Statement, out_irvec: &mut Vec<IrOperation>) -> Result<Option<String>, CompilerError> {
     match statement {
         Statement::ExpressionStatement(expr) => {
             if let Some(expression) = expr {
-                let target = generate_tac_expr(&expression.node, out_tacvec)?;
+                let target = generate_ir_expr(&expression.node, out_irvec)?;
                 Ok(Some(target))
             } else {
                 Ok(None)
             }
         }
         Statement::ReturnStatement(return_stmt) => {
-            let target = generate_tac_expr(&return_stmt.node, out_tacvec)?;
-            out_tacvec.push(TAC::Return { result: target });
+            let target = generate_ir_expr(&return_stmt.node, out_irvec)?;
+            out_irvec.push(IrOperation::Return { result: target });
             Ok(None)
         }
         Statement::IfStatement(if_stmt) => {
-            let target = generate_tac_expr(&if_stmt.expression.node, out_tacvec)?;
+            let target = generate_ir_expr(&if_stmt.expression.node, out_irvec)?;
 
-            let index_of_if_goto = out_tacvec.len();
+            let index_of_if_goto = out_irvec.len();
 
-            generate_tac_stmt(&if_stmt.if_block.node, out_tacvec)?;
+            generate_ir_stmt(&if_stmt.if_block.node, out_irvec)?;
 
-            out_tacvec.insert(
+            out_irvec.insert(
                 index_of_if_goto,
-                TAC::IfGoto {
+                IrOperation::IfGoto {
                     condition: target,
-                    label: (out_tacvec.len() + 1) as u32,
+                    label: (out_irvec.len() + 1) as u32,
                 },
             );
-            let end_of_if_block = out_tacvec.len();
+            let end_of_if_block = out_irvec.len();
 
             if let Some(else_stmt) = &if_stmt.else_block {
-                generate_tac_stmt(&else_stmt.node, out_tacvec)?;
+                generate_ir_stmt(&else_stmt.node, out_irvec)?;
             }
 
-            out_tacvec.insert(
+            out_irvec.insert(
                 end_of_if_block,
-                TAC::Goto {
-                    label: (out_tacvec.len() + 1) as u32,
+                IrOperation::Goto {
+                    label: (out_irvec.len() + 1) as u32,
                 },
             );
             Ok(None)
@@ -147,8 +147,8 @@ fn generate_tac_stmt(statement: &Statement, out_tacvec: &mut Vec<TAC>) -> Result
                                         match &initializer.node {
                                             Initializer::AssignmentExpression(expr) => {
                                                 let target = identifier;
-                                                let right = generate_tac_expr(&expr, out_tacvec)?;
-                                                out_tacvec.push(TAC::Assign {
+                                                let right = generate_ir_expr(&expr, out_irvec)?;
+                                                out_irvec.push(IrOperation::Assign {
                                                     target: target.to_string(),
                                                     left: "".to_string(),
                                                     right,
@@ -165,7 +165,7 @@ fn generate_tac_stmt(statement: &Statement, out_tacvec: &mut Vec<TAC>) -> Result
                         }
                     }
                     BlockItem::Statement(statement) => {
-                        generate_tac_stmt(statement, out_tacvec)?;
+                        generate_ir_stmt(statement, out_irvec)?;
                     }
                 }
             }
@@ -175,16 +175,16 @@ fn generate_tac_stmt(statement: &Statement, out_tacvec: &mut Vec<TAC>) -> Result
     }
 }
 
-fn generate_tac_expr(expression: &Expression, out_tacvec: &mut Vec<TAC>) -> Result<String, CompilerError> {
+fn generate_ir_expr(expression: &Expression, out_irvec: &mut Vec<IrOperation>) -> Result<String, CompilerError> {
     match expression {
         Expression::Identifier(identifier) => Ok(identifier.to_string()),
         Expression::Constant(constant) => Ok(format!("{}", constant)),
         Expression::BinaryOperator(binary_expr) => match &binary_expr.operator.node {
             BinaryOperator::Assign => {
-                let _ = generate_tac_expr(&binary_expr.lhs.node, out_tacvec)?;
-                let right = generate_tac_expr(&binary_expr.rhs.node, out_tacvec)?;
-                let temp = format!("t{}", out_tacvec.len());
-                out_tacvec.push(TAC::Assign {
+                let _ = generate_ir_expr(&binary_expr.lhs.node, out_irvec)?;
+                let right = generate_ir_expr(&binary_expr.rhs.node, out_irvec)?;
+                let temp = format!("t{}", out_irvec.len());
+                out_irvec.push(IrOperation::Assign {
                     target: temp.clone(),
                     left: "".to_string(),
                     right,
@@ -202,11 +202,11 @@ fn generate_tac_expr(expression: &Expression, out_tacvec: &mut Vec<TAC>) -> Resu
             | BinaryOperator::AssignBitwiseXor
             | BinaryOperator::AssignShiftLeft
             | BinaryOperator::AssignShiftRight => {
-                let temp = format!("t{}", out_tacvec.len());
-                let left = generate_tac_expr(&binary_expr.lhs.node, out_tacvec)?;
-                let right = generate_tac_expr(&binary_expr.rhs.node, out_tacvec)?;
+                let temp = format!("t{}", out_irvec.len());
+                let left = generate_ir_expr(&binary_expr.lhs.node, out_irvec)?;
+                let right = generate_ir_expr(&binary_expr.rhs.node, out_irvec)?;
                 let operator = binary_expr.operator.node;
-                out_tacvec.push(TAC::Assign {
+                out_irvec.push(IrOperation::Assign {
                     target: temp.clone(),
                     left,
                     right,
@@ -215,12 +215,12 @@ fn generate_tac_expr(expression: &Expression, out_tacvec: &mut Vec<TAC>) -> Resu
                 return Ok(temp);
             }
             // BinaryOperator::Index => {
-            //     let temp = format!("t{}", out_tacvec.len());
-            //     let left = generate_tac_expr(&binary_expr.lhs.node, out_tacvec)?;
-            //     let right = generate_tac_expr(&binary_expr.rhs.node, out_tacvec)?;
+            //     let temp = format!("t{}", out_irvec.len());
+            //     let left = generate_ir_expr(&binary_expr.lhs.node, out_irvec)?;
+            //     let right = generate_ir_expr(&binary_expr.rhs.node, out_irvec)?;
             //     // t1 = left + right * sizeof(right)
 
-            //     out_tacvec.push(TAC::Assign {
+            //     out_irvec.push(ir::Assign {
             //         target: temp.clone(),
             //         left,
             //         right,
@@ -229,11 +229,11 @@ fn generate_tac_expr(expression: &Expression, out_tacvec: &mut Vec<TAC>) -> Resu
             //     return Ok(temp);
             // }
             _ => {
-                let left = generate_tac_expr(&binary_expr.lhs.node, out_tacvec)?;
-                let right = generate_tac_expr(&binary_expr.rhs.node, out_tacvec)?;
+                let left = generate_ir_expr(&binary_expr.lhs.node, out_irvec)?;
+                let right = generate_ir_expr(&binary_expr.rhs.node, out_irvec)?;
                 let operator = binary_expr.operator.node;
-                let temp = format!("t{}", out_tacvec.len());
-                out_tacvec.push(TAC::Assign {
+                let temp = format!("t{}", out_irvec.len());
+                out_irvec.push(IrOperation::Assign {
                     target: temp.clone(),
                     left,
                     right,

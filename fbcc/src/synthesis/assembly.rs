@@ -19,16 +19,12 @@ pub struct AssemblyGenerator {
 }
 
 impl AssemblyGenerator {
-    /// Returns a new instance of `AssemblyGenerator`.
     pub fn new() -> Self {
         AssemblyGenerator {
             assemblylayer: NativeAssemblyLayer::new(),
         }
     }
 
-    /// Generates assembly code from the given `TranslationUnit`.
-    /// The generated assembly code includes the necessary directives and labels for the main function.
-    /// Returns the generated assembly code as a `Result<String, CompilerError>`.
     pub fn generate_assembly(&mut self, translation_unit: &TranslationUnit) -> Result<String, CompilerError> {
         let mut assembly = String::new();
 
@@ -153,15 +149,6 @@ impl NativeAssemblyLayer {
         }
     }
 
-    /// Allocates a 32-bit register.
-    ///
-    /// This method searches for an available 32-bit register and marks it as allocated.
-    /// If no register is available, it panics with a "No more registers available" message.
-    ///
-    /// # Returns
-    ///
-    /// The name of the allocated register as a String, in the format "wX" where X is the register number.
-    ///
     fn allocate_register_32(&mut self) -> String {
         for i in 0..31 {
             if !self.registers[i] {
@@ -172,15 +159,6 @@ impl NativeAssemblyLayer {
         panic!("No more registers available");
     }
 
-    /// Allocates a 64-bit register.
-    ///
-    /// This method searches for an available 64-bit register and marks it as allocated.
-    /// If no register is available, it panics with a "No more registers available" message.
-    ///
-    /// # Returns
-    ///
-    /// The name of the allocated register as a String, in the format "xX" where X is the register number.
-    ///
     fn allocate_register_64(&mut self) -> String {
         for i in 0..31 {
             if !self.registers[i] {
@@ -191,23 +169,11 @@ impl NativeAssemblyLayer {
         panic!("No more registers available");
     }
 
-    /// Frees a register.
-    ///
-    /// This method marks the specified register as deallocated.
-    ///
-    /// # Arguments
-    ///
-    /// * `register` - The name of the register to free, in the format "wX" or "xX" where X is the register number.
-    ///
     fn free_register(&mut self, register: &str) {
         let register_number: usize = register[1..].parse().unwrap();
         self.registers[register_number] = false;
     }
 
-    /// Frees all registers.
-    ///
-    /// This method marks all registers as deallocated.
-    ///
     fn free_all_registers(&mut self) {
         for i in 0..31 {
             self.registers[i] = false;
