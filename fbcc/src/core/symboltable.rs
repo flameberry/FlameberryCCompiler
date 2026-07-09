@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::analysis::ast::StorageClassFlags;
-use crate::common::errors::{CompilerError, CompilerErrorKind};
-use crate::common::typedefs::{Constant, Type};
+use crate::core::errors::{CompilerError, CompilerErrorKind};
+use crate::core::typedefs::{Constant, Type};
 
 #[derive(Debug, Clone)]
 pub struct SymbolDefinition {

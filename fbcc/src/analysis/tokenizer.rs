@@ -1,8 +1,8 @@
 //! Module for performing lexical analysis on source code.
 use crate::{
     analysis::node::Location,
-    common::errors::{CompilerError, CompilerErrorKind},
-    common::typedefs::*,
+    core::errors::{CompilerError, CompilerErrorKind},
+    core::typedefs::*,
 };
 
 use regex::Regex;

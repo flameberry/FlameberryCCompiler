@@ -1,6 +1,6 @@
 use {
     crate::analysis::node::{Location, Node, Span},
-    crate::common::typedefs::*,
+    crate::core::typedefs::*,
     debug_tree::*,
     std::fmt,
 };
@@ -189,7 +189,7 @@ pub struct CastExpression {
 #[derive(Debug, Clone)]
 pub struct ImplicitCastExpression {
     pub expression: Expression,
-    pub target_type: BaseType,
+    pub target_type: DataType,
 }
 
 #[derive(Debug, Clone, Default)]

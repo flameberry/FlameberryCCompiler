@@ -1,6 +1,6 @@
 use colored::Colorize;
-use fbcc::common::errors::{CompilerError, CompilerErrorKind};
 use fbcc::compiler::Compiler;
+use fbcc::core::errors::{CompilerError, CompilerErrorKind};
 use std::io;
 use std::{
     fs,
@@ -11,6 +11,7 @@ use std::{
 struct CliOptions {
     paths: Vec<PathBuf>,
     dump_ast: bool,
+    dump_ir: bool,
 }
 
 impl CliOptions {
@@ -18,6 +19,7 @@ impl CliOptions {
         Self {
             paths: Vec::new(),
             dump_ast: false,
+            dump_ir: false,
         }
     }
 }
@@ -27,6 +29,7 @@ fn parse_cli(args: Vec<String>) -> Result<CliOptions, io::Error> {
     for arg in args {
         match arg.as_str() {
             "--dump-ast" => cli_options.dump_ast = true,
+            "--dump-ir" => cli_options.dump_ir = true,
 
             _ => {
                 let path = PathBuf::from(arg);
@@ -85,7 +88,7 @@ fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
 
 fn compile_file(path: &PathBuf, cli_options: &CliOptions) {
     let source = fs::read_to_string(path).unwrap();
-    let result = Compiler::new().compile(source.as_str(), cli_options.dump_ast);
+    let result = Compiler::new().compile(source.as_str(), cli_options.dump_ast, cli_options.dump_ir);
 
     if let Err(error) = result {
         if let Some(loc) = error.location {

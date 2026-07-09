@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::{analysis::ast::*, common::errors::CompilerError};
+use crate::{analysis::ast::*, core::errors::CompilerError};
 
 #[derive(Debug)]
 pub enum IrOperation {

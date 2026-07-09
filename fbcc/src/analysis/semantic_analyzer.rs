@@ -1,9 +1,9 @@
 use std::iter::zip;
 
 use crate::analysis::{ast::*, node::Span};
-use crate::common::errors::{CompilerError, CompilerErrorKind};
-use crate::common::symboltable::{SymbolDefinition, SymbolTable};
-use crate::common::typedefs::{BaseType, Type, TypeCompatibility, TypeQualifiers};
+use crate::core::errors::{CompilerError, CompilerErrorKind};
+use crate::core::symboltable::{SymbolDefinition, SymbolTable};
+use crate::core::typedefs::{DataType, Type, TypeCompatibility, TypeQualifiers};
 
 use super::node::Node;
 
@@ -134,7 +134,7 @@ impl<'a> SemanticAnalyzer<'a> {
         }
 
         // Construct the function signature
-        let function_type = Type::new(BaseType::Function {
+        let function_type = Type::new(DataType::Function {
             return_type: Box::new(expected_return_type.clone()),
             parameters: param_types,
         });
@@ -190,7 +190,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
                         return_stmt.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
                             expression: temp_expr,
-                            target_type: expected_return_type.base_type.clone(),
+                            target_type: expected_return_type.datatype.clone(),
                         }));
                     }
 
@@ -242,7 +242,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 if let Some(condition) = &mut for_stmt.condition {
                     let condition_type = self.validate_expr(&mut condition.node, &condition.span)?;
 
-                    match Type::compare(&condition_type, &Type::new(BaseType::Bool)) {
+                    match Type::compare(&condition_type, &Type::new(DataType::Bool)) {
                         TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
 
                         TypeCompatibility::ImplicitConversion { .. } => {
@@ -252,7 +252,7 @@ impl<'a> SemanticAnalyzer<'a> {
                             for_stmt.condition = Some(Node::new(
                                 Expression::ImplicitCast(Box::new(ImplicitCastExpression {
                                     expression: temp_expr.node,
-                                    target_type: BaseType::Bool,
+                                    target_type: DataType::Bool,
                                 })),
                                 temp_expr.span,
                             ));
@@ -287,7 +287,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 let condition_type =
                     self.validate_expr(&mut while_stmt.expression.node, &while_stmt.expression.span)?;
 
-                match Type::compare(&condition_type, &Type::new(BaseType::Bool)) {
+                match Type::compare(&condition_type, &Type::new(DataType::Bool)) {
                     TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
 
                     TypeCompatibility::ImplicitConversion { .. } => {
@@ -296,7 +296,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
                         while_stmt.expression.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
                             expression: temp_expr,
-                            target_type: BaseType::Bool,
+                            target_type: DataType::Bool,
                         }));
                     }
                     TypeCompatibility::Incompatible => {
@@ -318,7 +318,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 // 1. Evaluate condition and check if the type can evaluate into a boolean
                 let condition_type = self.validate_expr(&mut if_stmt.expression.node, &if_stmt.expression.span)?;
 
-                match Type::compare(&condition_type, &Type::new(BaseType::Bool)) {
+                match Type::compare(&condition_type, &Type::new(DataType::Bool)) {
                     TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
 
                     TypeCompatibility::ImplicitConversion { .. } => {
@@ -327,7 +327,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
                         if_stmt.expression.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
                             expression: temp_expr,
-                            target_type: BaseType::Bool,
+                            target_type: DataType::Bool,
                         }));
                     }
                     TypeCompatibility::Incompatible => {
@@ -388,7 +388,7 @@ impl<'a> SemanticAnalyzer<'a> {
                                 // Note: Here is a logical mistake i.e., instead of checking that
                                 // the two types, declaration_type and initializer_expression_type
                                 // are compatible directly, i.e., rhs is convertible to lhs
-                                // directly and not a common higher precision base type, we assume
+                                // directly and not a common higher precision data type, we assume
                                 // just because there is an implicit conversion possible that they
                                 // are compatible.
 
@@ -401,7 +401,7 @@ impl<'a> SemanticAnalyzer<'a> {
                                 // 2. Adding an implicit cast to the assignment expression
                                 init_node.node = Initializer::AssignmentExpression(Expression::ImplicitCast(Box::new(
                                     ImplicitCastExpression {
-                                        target_type: declaration_type.base_type.clone(),
+                                        target_type: declaration_type.datatype.clone(),
                                         expression: temp_expr,
                                     },
                                 )));
@@ -452,15 +452,15 @@ impl<'a> SemanticAnalyzer<'a> {
                 // 1. Evaluate LHS and RHS type
                 let lhs_typeinfo = self.validate_expr(&mut binary_expr.lhs.node, &binary_expr.lhs.span)?;
                 let rhs_typeinfo = self.validate_expr(&mut binary_expr.rhs.node, &binary_expr.rhs.span)?;
-                let composite_type: BaseType;
+                let composite_type: DataType;
 
                 // 2. Get Common Type between the operands
                 match Type::compare(&lhs_typeinfo, &rhs_typeinfo) {
                     TypeCompatibility::Identical => {
-                        composite_type = lhs_typeinfo.base_type.clone();
+                        composite_type = lhs_typeinfo.datatype.clone();
                     }
 
-                    TypeCompatibility::ImplicitConversion { base_type } => {
+                    TypeCompatibility::ImplicitConversion { datatype: dtype } => {
                         if Self::is_assignment_operator(&binary_expr.operator.node) {
                             // Here the operator is an assignment operator, so we have to cast the
                             // rhs expression to the type of the lhs expression
@@ -480,40 +480,40 @@ impl<'a> SemanticAnalyzer<'a> {
                             let rhs_expr = binary_expr.rhs.clone();
 
                             binary_expr.rhs.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                                target_type: lhs_typeinfo.base_type.clone(),
+                                target_type: lhs_typeinfo.datatype.clone(),
                                 expression: rhs_expr.node,
                             }));
 
                             // 3. Set the composite type
-                            composite_type = lhs_typeinfo.base_type.clone();
+                            composite_type = lhs_typeinfo.datatype.clone();
                         } else {
                             // Here, the operator is not an assignment operator, so we need to cast
                             // both lhs and rhs accordingly.
 
                             // 1. Cast LHS expression if it's not of the required type (according
                             //    to the C type promotion rules)
-                            if lhs_typeinfo.base_type != base_type {
+                            if lhs_typeinfo.datatype != dtype {
                                 let lhs_expr = binary_expr.lhs.clone();
 
                                 binary_expr.lhs.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                                    target_type: base_type.clone(),
+                                    target_type: dtype.clone(),
                                     expression: lhs_expr.node,
                                 }));
                             }
 
                             // 2. Cast RHS expression if it's not of the required type (according
                             //    to the C type promotion rules)
-                            if rhs_typeinfo.base_type != base_type {
+                            if rhs_typeinfo.datatype != dtype {
                                 let rhs_expr = binary_expr.rhs.clone();
 
                                 binary_expr.rhs.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                                    target_type: base_type.clone(),
+                                    target_type: dtype.clone(),
                                     expression: rhs_expr.node,
                                 }));
                             }
 
                             // 3. Set the composite type
-                            composite_type = base_type;
+                            composite_type = dtype;
                         }
                     }
 
@@ -545,7 +545,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 // Finally return the evaluated type of the expression
                 // Note: Missing proper handling of qualifiers
                 Ok(Type {
-                    base_type: composite_type,
+                    datatype: composite_type,
                     qualifiers: lhs_typeinfo.qualifiers,
                 })
             }
@@ -555,8 +555,8 @@ impl<'a> SemanticAnalyzer<'a> {
                 let callee_type = self.validate_expr(&mut call_expr.callee.node, span)?;
 
                 if let Type {
-                    base_type:
-                        BaseType::Function {
+                    datatype:
+                        DataType::Function {
                             return_type,
                             parameters,
                         },
@@ -577,7 +577,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
                                 arg.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
                                     expression: temp_expr,
-                                    target_type: param.base_type.clone(),
+                                    target_type: param.datatype.clone(),
                                 }));
                             }
 
@@ -605,7 +605,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 let mut first = true;
                 let mut typeinfo = Type {
-                    base_type: BaseType::Void,
+                    datatype: DataType::Void,
                     qualifiers: TypeQualifiers::default(),
                 };
 
@@ -641,12 +641,21 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
             }
 
-            Expression::Constant(constant) => Ok(BaseType::from_constant(constant)),
+            Expression::Constant(constant) => Ok(Type::from_constant(constant)),
 
-            _ => todo!(),
+            Expression::StringLiteral(literal) => Ok(Type::new(DataType::Array {
+                element_type: Box::new(Type::new(DataType::Char { signed: true })),
+                size: Some(literal.len() + 1),
+            })),
+
+            _ => {
+                println!("SemanticAnalyzer::validate_expr not implemented for {:?}", expression);
+                todo!()
+            }
         }
     }
 
+    #[allow(dead_code)]
     fn is_lvalue(&self, expression: &Expression) -> bool {
         // TODO: Update function to recognize complex lvalue expressions
         match expression {
@@ -668,19 +677,19 @@ impl<'a> SemanticAnalyzer<'a> {
     }
 
     /// Returns the operand type that is expected for the given binary operator
-    fn is_operand_type_compatible_with_operator(operand_type: &BaseType, operator: &BinaryOperator) -> bool {
+    fn is_operand_type_compatible_with_operator(operand_type: &DataType, operator: &BinaryOperator) -> bool {
         match (operator, operand_type) {
             // Arithmetic operators: +, -, *, /, %
             (
                 BinaryOperator::Plus | BinaryOperator::Minus | BinaryOperator::Multiply | BinaryOperator::Divide,
-                BaseType::Int { .. }
-                | BaseType::Short { .. }
-                | BaseType::Long { .. }
-                | BaseType::Float
-                | BaseType::Double,
+                DataType::Int { .. }
+                | DataType::Short { .. }
+                | DataType::Long { .. }
+                | DataType::Float
+                | DataType::Double,
             ) => true,
 
-            (BinaryOperator::Modulo, BaseType::Int { .. } | BaseType::Short { .. } | BaseType::Long { .. }) => true, // % only works with integral types
+            (BinaryOperator::Modulo, DataType::Int { .. } | DataType::Short { .. } | DataType::Long { .. }) => true, // % only works with integral types
 
             // Bitwise operators: &, |, ^, <<, >>
             (
@@ -689,7 +698,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 | BinaryOperator::BitwiseXor
                 | BinaryOperator::ShiftLeft
                 | BinaryOperator::ShiftRight,
-                BaseType::Int { .. } | BaseType::Short { .. } | BaseType::Long { .. } | BaseType::Char { .. },
+                DataType::Int { .. } | DataType::Short { .. } | DataType::Long { .. } | DataType::Char { .. },
             ) => true,
 
             // Comparison operators: ==, !=, <, >, <=, >=
@@ -700,17 +709,17 @@ impl<'a> SemanticAnalyzer<'a> {
                 | BinaryOperator::Greater
                 | BinaryOperator::LessOrEqual
                 | BinaryOperator::GreaterOrEqual,
-                BaseType::Int { .. }
-                | BaseType::Short { .. }
-                | BaseType::Long { .. }
-                | BaseType::Float
-                | BaseType::Double
-                | BaseType::Char { .. }
-                | BaseType::Bool,
+                DataType::Int { .. }
+                | DataType::Short { .. }
+                | DataType::Long { .. }
+                | DataType::Float
+                | DataType::Double
+                | DataType::Char { .. }
+                | DataType::Bool,
             ) => true,
 
             // Logical operators: &&, ||
-            (BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr, BaseType::Bool) => true,
+            (BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr, DataType::Bool) => true,
 
             _ => Self::is_assignment_operator(operator),
         }

@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::analysis::ast::{DeclarationSpecifier, StorageClassFlags, TypeName, TypeQualifier, TypeSpecifier};
 use crate::analysis::node::Node;
-use crate::common::errors::{CompilerError, CompilerErrorKind};
+use crate::core::errors::{CompilerError, CompilerErrorKind};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum IntegerType {
@@ -31,7 +31,7 @@ pub enum Constant {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
-pub enum BaseType {
+pub enum DataType {
     #[default]
     Void,
 
@@ -86,53 +86,11 @@ pub enum BaseType {
     },
 }
 
-impl BaseType {
-    /// Get the type for a constant value
-    pub fn from_constant(constant: &Constant) -> Type {
-        match constant {
-            Constant::Integer(int_type) => {
-                match int_type {
-                    IntegerType::Generic(val) => {
-                        // Infer the smallest type that can hold the value
-                        if *val >= 0 {
-                            if *val <= i32::MAX as i64 {
-                                Type::new(BaseType::Int { signed: true })
-                            } else if *val <= i64::MAX {
-                                Type::new(BaseType::Long { signed: true })
-                            } else {
-                                Type::new(BaseType::LongLong { signed: true })
-                            }
-                        } else {
-                            if *val >= i32::MIN as i64 {
-                                Type::new(BaseType::Int { signed: true })
-                            } else if *val >= i64::MIN {
-                                Type::new(BaseType::Long { signed: true })
-                            } else {
-                                Type::new(BaseType::LongLong { signed: true })
-                            }
-                        }
-                    }
-                    IntegerType::Signed(_) => Type::new(BaseType::Int { signed: true }),
-                    IntegerType::SignedLong(_) => Type::new(BaseType::Long { signed: true }),
-                    IntegerType::SignedLongLong(_) => Type::new(BaseType::LongLong { signed: true }),
-                    IntegerType::Unsigned(_) => Type::new(BaseType::Int { signed: false }),
-                    IntegerType::UnsignedLong(_) => Type::new(BaseType::Long { signed: false }),
-                    IntegerType::UnsignedLongLong(_) => Type::new(BaseType::LongLong { signed: false }),
-                }
-            }
-            Constant::Float(float_type) => match float_type {
-                FloatingPointType::Float(_) => Type::new(BaseType::Float),
-                FloatingPointType::Double(_) => Type::new(BaseType::Double),
-                FloatingPointType::LongDouble(_) => Type::new(BaseType::LongDouble),
-            },
-            Constant::Character(_) => Type::new(BaseType::Char { signed: true }),
-        }
-    }
-
+impl DataType {
     // Check if this type can represent the given constant
     pub fn can_represent(&self, constant: &Constant) -> bool {
         match (self, constant) {
-            (BaseType::Int { signed }, Constant::Integer(IntegerType::Generic(val))) => {
+            (DataType::Int { signed }, Constant::Integer(IntegerType::Generic(val))) => {
                 if *signed {
                     *val >= i32::MIN as i64 && *val <= i32::MAX as i64
                 } else {
@@ -147,12 +105,12 @@ impl BaseType {
     fn is_integer_type(&self) -> bool {
         matches!(
             self,
-            BaseType::Bool
-                | BaseType::Char { .. }
-                | BaseType::Short { .. }
-                | BaseType::Int { .. }
-                | BaseType::Long { .. }
-                | BaseType::LongLong { .. }
+            DataType::Bool
+                | DataType::Char { .. }
+                | DataType::Short { .. }
+                | DataType::Int { .. }
+                | DataType::Long { .. }
+                | DataType::LongLong { .. }
         )
     }
 }
@@ -168,20 +126,20 @@ pub struct TypeQualifiers {
 pub enum TypeCompatibility {
     Identical,
     Compatible,
-    ImplicitConversion { base_type: BaseType },
+    ImplicitConversion { datatype: DataType },
     Incompatible,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub struct Type {
-    pub base_type: BaseType,
+    pub datatype: DataType,
     pub qualifiers: TypeQualifiers,
 }
 
 impl Type {
-    pub fn new(base_type: BaseType) -> Self {
+    pub fn new(datatype: DataType) -> Self {
         Type {
-            base_type,
+            datatype,
             qualifiers: TypeQualifiers::default(),
         }
     }
@@ -199,7 +157,7 @@ impl Type {
     ) -> Result<(Self, StorageClassFlags), CompilerError> {
         let mut signed_keyword = false;
         let mut unsigned_keyword = false;
-        let mut base_type_encountered = false;
+        let mut data_type_encountered = false;
         let mut typeinfo = Self::default();
         let mut storageclass: u8 = 0;
         let mut is_type_long_compatible = false;
@@ -244,24 +202,24 @@ impl Type {
                     }
 
                     _ => {
-                        // This means that base type keyword like int, float, double, char has been
+                        // This means that data type keyword like int, float, double, char has been
                         // encountered, because without this the type is incomplete
-                        base_type_encountered = true;
+                        data_type_encountered = true;
 
                         match specifier {
-                            TypeSpecifier::Void => typeinfo.base_type = BaseType::Void,
-                            TypeSpecifier::Bool => typeinfo.base_type = BaseType::Bool,
+                            TypeSpecifier::Void => typeinfo.datatype = DataType::Void,
+                            TypeSpecifier::Bool => typeinfo.datatype = DataType::Bool,
                             TypeSpecifier::Char => {
-                                typeinfo.base_type = BaseType::Char {
+                                typeinfo.datatype = DataType::Char {
                                     signed: !unsigned_keyword,
                                 }
                             }
                             TypeSpecifier::Short => {
-                                typeinfo.base_type = BaseType::Short {
+                                typeinfo.datatype = DataType::Short {
                                     signed: !unsigned_keyword,
                                 }
                             }
-                            TypeSpecifier::Float => typeinfo.base_type = BaseType::Float,
+                            TypeSpecifier::Float => typeinfo.datatype = DataType::Float,
 
                             // This is never possible so basically dead code
                             TypeSpecifier::Signed | TypeSpecifier::Unsigned => unreachable!(),
@@ -281,14 +239,14 @@ impl Type {
                                     TypeSpecifier::Long => long_count += 1,
 
                                     TypeSpecifier::Int => {
-                                        typeinfo.base_type = BaseType::Int {
+                                        typeinfo.datatype = DataType::Int {
                                             signed: !unsigned_keyword,
                                         }
                                     }
 
                                     TypeSpecifier::Double => {
                                         is_double = true;
-                                        typeinfo.base_type = BaseType::Double
+                                        typeinfo.datatype = DataType::Double
                                     }
                                     _ => unreachable!(),
                                 }
@@ -301,21 +259,21 @@ impl Type {
         }
 
         if is_type_long_compatible {
-            typeinfo.base_type = match long_count {
+            typeinfo.datatype = match long_count {
                 0 => {
                     if is_double {
-                        BaseType::Double // double x;
+                        DataType::Double // double x;
                     } else {
-                        BaseType::Int {
+                        DataType::Int {
                             signed: !unsigned_keyword,
                         } // int x;
                     }
                 }
                 1 => {
                     if is_double {
-                        BaseType::LongDouble // long double x;
+                        DataType::LongDouble // long double x;
                     } else {
-                        BaseType::Long {
+                        DataType::Long {
                             signed: !unsigned_keyword,
                         } // long int x;
                     }
@@ -328,7 +286,7 @@ impl Type {
                             location: Some(declaration_specifiers.first().unwrap().span.start),
                         }); // long long double x; <-- Not Allowed
                     } else {
-                        BaseType::LongLong {
+                        DataType::LongLong {
                             signed: !unsigned_keyword,
                         } // long long int x;
                     }
@@ -343,7 +301,7 @@ impl Type {
             }
         }
 
-        if base_type_encountered {
+        if data_type_encountered {
             Ok((typeinfo, storageclass))
         } else {
             Err(CompilerError {
@@ -354,6 +312,47 @@ impl Type {
         }
     }
 
+    pub fn from_constant(constant: &Constant) -> Type {
+        match constant {
+            Constant::Integer(int_type) => {
+                match int_type {
+                    IntegerType::Generic(val) => {
+                        // Infer the smallest type that can hold the value
+                        if *val >= 0 {
+                            if *val <= i32::MAX as i64 {
+                                Type::new(DataType::Int { signed: true })
+                            } else if *val <= i64::MAX {
+                                Type::new(DataType::Long { signed: true })
+                            } else {
+                                Type::new(DataType::LongLong { signed: true })
+                            }
+                        } else {
+                            if *val >= i32::MIN as i64 {
+                                Type::new(DataType::Int { signed: true })
+                            } else if *val >= i64::MIN {
+                                Type::new(DataType::Long { signed: true })
+                            } else {
+                                Type::new(DataType::LongLong { signed: true })
+                            }
+                        }
+                    }
+                    IntegerType::Signed(_) => Type::new(DataType::Int { signed: true }),
+                    IntegerType::SignedLong(_) => Type::new(DataType::Long { signed: true }),
+                    IntegerType::SignedLongLong(_) => Type::new(DataType::LongLong { signed: true }),
+                    IntegerType::Unsigned(_) => Type::new(DataType::Int { signed: false }),
+                    IntegerType::UnsignedLong(_) => Type::new(DataType::Long { signed: false }),
+                    IntegerType::UnsignedLongLong(_) => Type::new(DataType::LongLong { signed: false }),
+                }
+            }
+            Constant::Float(float_type) => match float_type {
+                FloatingPointType::Float(_) => Type::new(DataType::Float),
+                FloatingPointType::Double(_) => Type::new(DataType::Double),
+                FloatingPointType::LongDouble(_) => Type::new(DataType::LongDouble),
+            },
+            Constant::Character(_) => Type::new(DataType::Char { signed: true }),
+        }
+    }
+
     pub fn compare(x: &Type, y: &Type) -> TypeCompatibility {
         if x == y {
             TypeCompatibility::Identical
@@ -361,9 +360,9 @@ impl Type {
             // Check if the types are compatible or not --------------------------------------------------
             // Rule 1: If one of the types x, y is a pointer to a type T, and other is an array to the
             // same type T, then x and y are compatible
-            if let (BaseType::Pointer { inner: typeinfo }, BaseType::Array { element_type, size: _ })
-            | (BaseType::Array { element_type, size: _ }, BaseType::Pointer { inner: typeinfo }) =
-                (&x.base_type, &y.base_type)
+            if let (DataType::Pointer { inner: typeinfo }, DataType::Array { element_type, size: _ })
+            | (DataType::Array { element_type, size: _ }, DataType::Pointer { inner: typeinfo }) =
+                (&x.datatype, &y.datatype)
             {
                 if typeinfo == element_type {
                     return TypeCompatibility::Compatible;
@@ -372,51 +371,51 @@ impl Type {
 
             // Check if types are can be converted implicitly to match each other ------------------------
             // Type Promotion Rules
-            if x.base_type == BaseType::LongDouble || y.base_type == BaseType::LongDouble {
+            if x.datatype == DataType::LongDouble || y.datatype == DataType::LongDouble {
                 return TypeCompatibility::ImplicitConversion {
-                    base_type: BaseType::LongDouble,
+                    datatype: DataType::LongDouble,
                 };
             }
 
-            if x.base_type == BaseType::Double || y.base_type == BaseType::Double {
+            if x.datatype == DataType::Double || y.datatype == DataType::Double {
                 return TypeCompatibility::ImplicitConversion {
-                    base_type: BaseType::Double,
+                    datatype: DataType::Double,
                 };
             }
 
-            if x.base_type == BaseType::Float || y.base_type == BaseType::Float {
+            if x.datatype == DataType::Float || y.datatype == DataType::Float {
                 return TypeCompatibility::ImplicitConversion {
-                    base_type: BaseType::Float,
+                    datatype: DataType::Float,
                 };
             }
 
-            if x.base_type.is_integer_type() && y.base_type.is_integer_type() {
+            if x.datatype.is_integer_type() && y.datatype.is_integer_type() {
                 // Integer Promotion Rules
-                match (&x.base_type, &y.base_type) {
+                match (&x.datatype, &y.datatype) {
                     // This statement matches signed long long with unsigned long long and promotes
                     // ...expression to unsigned long long
-                    (BaseType::LongLong { signed: true }, BaseType::LongLong { signed: false })
-                    | (BaseType::LongLong { signed: false }, BaseType::LongLong { signed: true }) => {
+                    (DataType::LongLong { signed: true }, DataType::LongLong { signed: false })
+                    | (DataType::LongLong { signed: false }, DataType::LongLong { signed: true }) => {
                         TypeCompatibility::ImplicitConversion {
-                            base_type: BaseType::LongLong { signed: false },
+                            datatype: DataType::LongLong { signed: false },
                         }
                     }
 
                     // This statement matches signed long with unsigned long and promotes
                     // ...expression to unsigned long
-                    (BaseType::Long { signed: true }, BaseType::Long { signed: false })
-                    | (BaseType::Long { signed: false }, BaseType::Long { signed: true }) => {
+                    (DataType::Long { signed: true }, DataType::Long { signed: false })
+                    | (DataType::Long { signed: false }, DataType::Long { signed: true }) => {
                         TypeCompatibility::ImplicitConversion {
-                            base_type: BaseType::Long { signed: false },
+                            datatype: DataType::Long { signed: false },
                         }
                     }
 
                     // This statement matches signed int with unsigned int and promotes
                     // ...expression to unsigned int
-                    (BaseType::Int { signed: true }, BaseType::Int { signed: false })
-                    | (BaseType::Int { signed: false }, BaseType::Int { signed: true }) => {
+                    (DataType::Int { signed: true }, DataType::Int { signed: false })
+                    | (DataType::Int { signed: false }, DataType::Int { signed: true }) => {
                         TypeCompatibility::ImplicitConversion {
-                            base_type: BaseType::Int { signed: false },
+                            datatype: DataType::Int { signed: false },
                         }
                     }
 
@@ -427,38 +426,38 @@ impl Type {
 
                     // This statement matches long long with any lower type and promotes
                     // ...expression to long long
-                    (BaseType::LongLong { signed }, _) | (_, BaseType::LongLong { signed }) => {
+                    (DataType::LongLong { signed }, _) | (_, DataType::LongLong { signed }) => {
                         TypeCompatibility::ImplicitConversion {
-                            base_type: BaseType::LongLong { signed: *signed },
+                            datatype: DataType::LongLong { signed: *signed },
                         }
                     }
 
                     // This statement matches long with any lower type and promotes
                     // ...expression to long
-                    (BaseType::Long { signed }, _) | (_, BaseType::Long { signed }) => {
+                    (DataType::Long { signed }, _) | (_, DataType::Long { signed }) => {
                         TypeCompatibility::ImplicitConversion {
-                            base_type: BaseType::Long { signed: *signed },
+                            datatype: DataType::Long { signed: *signed },
                         }
                     }
 
                     // This statement matches int with any lower type and promotes
                     // ...expression to int
-                    (BaseType::Int { signed }, _) | (_, BaseType::Int { signed }) => {
+                    (DataType::Int { signed }, _) | (_, DataType::Int { signed }) => {
                         TypeCompatibility::ImplicitConversion {
-                            base_type: BaseType::Int { signed: *signed },
+                            datatype: DataType::Int { signed: *signed },
                         }
                     }
 
                     // This statement promotes any type combinations which are below int to int
-                    (BaseType::Char { signed }, _)
-                    | (_, BaseType::Char { signed })
-                    | (BaseType::Short { signed }, _)
-                    | (_, BaseType::Short { signed }) => TypeCompatibility::ImplicitConversion {
-                        base_type: BaseType::Int { signed: *signed },
+                    (DataType::Char { signed }, _)
+                    | (_, DataType::Char { signed })
+                    | (DataType::Short { signed }, _)
+                    | (_, DataType::Short { signed }) => TypeCompatibility::ImplicitConversion {
+                        datatype: DataType::Int { signed: *signed },
                     },
 
                     // No operation can be done on void types without explicitly casting them
-                    (BaseType::Void, _) | (_, BaseType::Void) => TypeCompatibility::Incompatible,
+                    (DataType::Void, _) | (_, DataType::Void) => TypeCompatibility::Incompatible,
 
                     // According to the current implementation the types are not compatible ----------------------
                     _ => unreachable!(),
@@ -472,7 +471,7 @@ impl Type {
     // Helper method to create a pointer to this type
     pub fn pointer_to(self) -> Type {
         Type {
-            base_type: BaseType::Pointer { inner: Box::new(self) },
+            datatype: DataType::Pointer { inner: Box::new(self) },
             qualifiers: TypeQualifiers::default(),
         }
     }
@@ -499,51 +498,51 @@ impl fmt::Display for TypeQualifiers {
     }
 }
 
-impl fmt::Display for BaseType {
+impl fmt::Display for DataType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            BaseType::Void => write!(f, "void"),
-            BaseType::Bool => write!(f, "bool"),
-            BaseType::Char { signed } => {
+            DataType::Void => write!(f, "void"),
+            DataType::Bool => write!(f, "bool"),
+            DataType::Char { signed } => {
                 write!(f, "{}char", if *signed { "signed " } else { "unsigned " })
             }
-            BaseType::Short { signed } => {
+            DataType::Short { signed } => {
                 write!(f, "{}short", if *signed { "signed " } else { "unsigned " })
             }
-            BaseType::Int { signed } => {
+            DataType::Int { signed } => {
                 write!(f, "{}int", if *signed { "signed " } else { "unsigned " })
             }
-            BaseType::Long { signed } => {
+            DataType::Long { signed } => {
                 write!(f, "{}long", if *signed { "signed " } else { "unsigned " })
             }
-            BaseType::LongLong { signed } => {
+            DataType::LongLong { signed } => {
                 write!(f, "{}long long", if *signed { "signed " } else { "unsigned " })
             }
-            BaseType::Float => write!(f, "float"),
-            BaseType::Double => write!(f, "double"),
-            BaseType::LongDouble => write!(f, "long double"),
-            BaseType::Pointer { inner } => write!(f, "*{}", inner),
-            BaseType::Array { element_type, size } => match size {
+            DataType::Float => write!(f, "float"),
+            DataType::Double => write!(f, "double"),
+            DataType::LongDouble => write!(f, "long double"),
+            DataType::Pointer { inner } => write!(f, "*{}", inner),
+            DataType::Array { element_type, size } => match size {
                 Some(s) => write!(f, "{}[{}]", element_type, s),
                 None => write!(f, "{}[]", element_type),
             },
-            BaseType::Function {
+            DataType::Function {
                 return_type,
                 parameters,
             } => {
                 let params: Vec<String> = parameters.iter().map(|p| format!("{}", p)).collect();
                 write!(f, "{}({})", return_type, params.join(", "))
             }
-            BaseType::Struct { name, fields } => {
+            DataType::Struct { name, fields } => {
                 let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{}: {}", n, t)).collect();
                 write!(f, "struct {} {{ {} }}", name, fields_str.join("; "))
             }
-            BaseType::Union { name, fields } => {
+            DataType::Union { name, fields } => {
                 let fields_str: Vec<String> = fields.iter().map(|(n, t)| format!("{}: {}", n, t)).collect();
                 write!(f, "union {} {{ {} }}", name, fields_str.join("; "))
             }
-            BaseType::Enum { name, underlying_type } => write!(f, "enum {} : {}", name, underlying_type),
-            BaseType::Typedef { name, actual_type } => {
+            DataType::Enum { name, underlying_type } => write!(f, "enum {} : {}", name, underlying_type),
+            DataType::Typedef { name, actual_type } => {
                 write!(f, "typedef {} = {}", name, actual_type)
             }
         }
@@ -553,9 +552,9 @@ impl fmt::Display for BaseType {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.qualifiers.is_const || self.qualifiers.is_volatile {
-            write!(f, "{} {}", self.qualifiers, self.base_type)
+            write!(f, "{} {}", self.qualifiers, self.datatype)
         } else {
-            write!(f, "{}", self.base_type)
+            write!(f, "{}", self.datatype)
         }
     }
 }
