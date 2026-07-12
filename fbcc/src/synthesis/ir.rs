@@ -184,7 +184,7 @@ impl fmt::Display for IrFunction {
     }
 }
 
-struct Slot {
+pub struct Slot {
     ty: Type,
     size: usize,
     align: usize,
@@ -192,11 +192,18 @@ struct Slot {
 }
 
 pub struct IrFunction {
-    name: String,
-    framesize: usize,
-    params: Vec<SlotID>,
-    slots: Vec<Slot>,
-    body: Vec<IrStatement>,
+    pub name: String,
+    pub framesize: usize,
+    pub params: Vec<SlotID>,
+    pub slots: Vec<Slot>,
+    pub body: Vec<IrStatement>,
+}
+
+impl IrFunction {
+    /// Byte offset of a slot within the frame (sp-relative).
+    pub fn slot_offset(&self, slot: &SlotID) -> usize {
+        self.slots[slot.0].offset
+    }
 }
 
 struct FrameBuilder {

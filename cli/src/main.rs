@@ -12,6 +12,9 @@ struct CliOptions {
     paths: Vec<PathBuf>,
     dump_ast: bool,
     dump_ir: bool,
+    dump_asm: bool,
+    emit_asm: bool,
+    output: Option<PathBuf>,
 }
 
 impl CliOptions {
@@ -20,16 +23,28 @@ impl CliOptions {
             paths: Vec::new(),
             dump_ast: false,
             dump_ir: false,
+            dump_asm: false,
+            emit_asm: false,
+            output: None,
         }
     }
 }
 
 fn parse_cli(args: Vec<String>) -> Result<CliOptions, io::Error> {
     let mut cli_options = CliOptions::new();
-    for arg in args {
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "--dump-ast" => cli_options.dump_ast = true,
             "--dump-ir" => cli_options.dump_ir = true,
+            "--dump-asm" => cli_options.dump_asm = true,
+            "--emit-asm" => cli_options.emit_asm = true,
+            "-o" => {
+                let path = args.next().ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "-o requires a path argument")
+                })?;
+                cli_options.output = Some(PathBuf::from(path));
+            }
 
             _ => {
                 let path = PathBuf::from(arg);
@@ -88,12 +103,31 @@ fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
 
 fn compile_file(path: &PathBuf, cli_options: &CliOptions) {
     let source = fs::read_to_string(path).unwrap();
-    let result = Compiler::new().compile(source.as_str(), cli_options.dump_ast, cli_options.dump_ir);
+    let result = Compiler::new().compile(
+        source.as_str(),
+        cli_options.dump_ast,
+        cli_options.dump_ir,
+        cli_options.dump_asm,
+    );
 
-    if let Err(error) = result {
-        if let Some(loc) = error.location {
-            let line = source.lines().nth(loc.line - 1).unwrap();
-            eprintln!("{}", format_error(&error, path, line));
+    match result {
+        Ok(asm) => {
+            // Write the `.s` when asked: `-o <path>`, else default to `<input>.s`.
+            if cli_options.emit_asm || cli_options.output.is_some() {
+                let out_path = cli_options
+                    .output
+                    .clone()
+                    .unwrap_or_else(|| path.with_extension("s"));
+                if let Err(e) = fs::write(&out_path, asm) {
+                    eprintln!("failed to write {}: {e}", out_path.display());
+                }
+            }
+        }
+        Err(error) => {
+            if let Some(loc) = error.location {
+                let line = source.lines().nth(loc.line - 1).unwrap();
+                eprintln!("{}", format_error(&error, path, line));
+            }
         }
     }
 }
