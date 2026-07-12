@@ -37,6 +37,20 @@ impl AsmEmitter {
         // emit body
         for statement in &function.body {
             match statement {
+                IrStatement::Copy { dst, src } => match src {
+                    Operand::Var(slot) => {
+                        // 1. load src operand into w9
+                        writeln!(asm, "\tldr\tw9, [sp, #{}]", function.slot_offset(slot)).unwrap();
+                        // 2. store w9 into dst slot
+                        writeln!(asm, "\tstr\tw9, [sp, #{}]", function.slot_offset(dst)).unwrap();
+                    }
+                    Operand::Const(constant) => {
+                        // 1. move constant into w9
+                        writeln!(asm, "\tmov\tw9, #{}", constant).unwrap();
+                        // 2. store w9 into dst slot
+                        writeln!(asm, "\tstr\tw9, [sp, #{}]", function.slot_offset(dst)).unwrap();
+                    }
+                },
                 IrStatement::Ret(op) => match op {
                     Operand::Var(slot) => writeln!(asm, "\tldr\tw0, [sp, #{}]", function.slot_offset(slot)).unwrap(),
                     Operand::Const(constant) => writeln!(asm, "\tmov\tw0, #{}", constant).unwrap(),
