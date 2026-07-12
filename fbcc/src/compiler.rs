@@ -3,7 +3,7 @@ use crate::analysis::parser::Parser;
 use crate::analysis::semantic_analyzer::SemanticAnalyzer;
 use crate::core::errors::CompilerError;
 use crate::core::symboltable::SymbolTable;
-use crate::synthesis::ir::generate_ir;
+use crate::synthesis::ir::IrEmitter;
 
 #[derive(Default)]
 pub struct Compiler {
@@ -27,8 +27,11 @@ impl Compiler {
         }
 
         if dump_ir {
-            let ir = generate_ir(&translation_unit)?;
-            println!("\n\n{:?}", ir);
+            let ir = IrEmitter::new().emit(&translation_unit)?;
+            println!("\n------- Intermediate Representation (IR) -------\n");
+            for function in &ir {
+                println!("{function}");
+            }
         }
 
         Ok(())

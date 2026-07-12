@@ -152,6 +152,54 @@ impl Type {
         todo!()
     }
 
+    pub fn size(&self) -> Result<usize, CompilerError> {
+        let size = match &self.datatype {
+            DataType::Void => 0,
+            DataType::Bool => 1,
+            DataType::Char { .. } => 1,
+            DataType::Short { .. } => 2,
+            DataType::Int { .. } => 4,
+            DataType::Long { .. } => 8,
+            DataType::LongLong { .. } => 8,
+            DataType::Float => 4,
+            DataType::Double => 8,
+            DataType::LongDouble => 8, // Apple arm64: long double == double
+            DataType::Pointer { .. } => 8,
+            other => {
+                return Err(CompilerError {
+                    kind: CompilerErrorKind::InternalError,
+                    message: format!("size() is not yet implemented for type: {other:?}"),
+                    location: None,
+                });
+            }
+        };
+        Ok(size)
+    }
+
+    pub fn align(&self) -> Result<usize, CompilerError> {
+        let size = match &self.datatype {
+            DataType::Void => 0,
+            DataType::Bool => 1,
+            DataType::Char { .. } => 1,
+            DataType::Short { .. } => 2,
+            DataType::Int { .. } => 4,
+            DataType::Long { .. } => 8,
+            DataType::LongLong { .. } => 8,
+            DataType::Float => 4,
+            DataType::Double => 8,
+            DataType::LongDouble => 8, // Apple arm64: long double == double
+            DataType::Pointer { .. } => 8,
+            other => {
+                return Err(CompilerError {
+                    kind: CompilerErrorKind::InternalError,
+                    message: format!("alignment() is not yet implemented for type: {other:?}"),
+                    location: None,
+                });
+            }
+        };
+        Ok(size)
+    }
+
     pub fn from_declaration_specifiers(
         declaration_specifiers: &[Node<DeclarationSpecifier>],
     ) -> Result<(Self, StorageClassFlags), CompilerError> {
