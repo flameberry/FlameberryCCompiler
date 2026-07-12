@@ -1,6 +1,6 @@
 use crate::{
     core::errors::CompilerError,
-    synthesis::ir::{IrFunction, IrStatement, Operand},
+    synthesis::ir::{BinaryOp, IrFunction, IrStatement, Operand},
 };
 use std::fmt::Write;
 
@@ -37,6 +37,43 @@ impl AsmEmitter {
         // emit body
         for statement in &function.body {
             match statement {
+                IrStatement::BinaryOp { dst, op, l, r } => {
+                    // 1. load left operand
+                    match l {
+                        Operand::Var(slot) => {
+                            // 1. load src operand into w9
+                            writeln!(asm, "\tldr\tw9, [sp, #{}]", function.slot_offset(slot)).unwrap();
+                        }
+                        Operand::Const(constant) => {
+                            // 1. move constant into w9
+                            writeln!(asm, "\tmov\tw9, #{}", constant).unwrap();
+                        }
+                    }
+
+                    // 2. load right operand
+                    match r {
+                        Operand::Var(slot) => {
+                            // 1. load src operand into w9
+                            writeln!(asm, "\tldr\tw10, [sp, #{}]", function.slot_offset(slot)).unwrap();
+                        }
+                        Operand::Const(constant) => {
+                            // 1. move constant into w9
+                            writeln!(asm, "\tmov\tw10, #{}", constant).unwrap();
+                        }
+                    }
+
+                    // 3. perform binary operation
+                    match op {
+                        BinaryOp::Add => writeln!(asm, "\tadd\tw9, w9, w10").unwrap(),
+                        BinaryOp::Sub => writeln!(asm, "\tsub\tw9, w9, w10").unwrap(),
+                        BinaryOp::Mul => writeln!(asm, "\tmul\tw9, w9, w10").unwrap(),
+                        BinaryOp::Div => writeln!(asm, "\tsdiv\tw9, w9, w10").unwrap(),
+                        _ => todo!(),
+                    }
+
+                    // 4. store result
+                    writeln!(asm, "\tstr\tw9, [sp, #{}]", function.slot_offset(dst)).unwrap();
+                }
                 IrStatement::Copy { dst, src } => match src {
                     Operand::Var(slot) => {
                         // 1. load src operand into w9
