@@ -77,28 +77,10 @@ impl Arm64AsmEmitter {
             match statement {
                 IrStatement::BinaryOp { dst, op, l, r } => {
                     // 1. load left operand
-                    match l {
-                        Operand::Var(slot) => {
-                            // 1. load src operand into w9
-                            writeln!(asm, "\tldr\tw9, [sp, #{}]", function.slot_offset(slot)).unwrap();
-                        }
-                        Operand::Const(constant) => {
-                            // 1. move constant into w9
-                            writeln!(asm, "\tmov\tw9, #{}", constant).unwrap();
-                        }
-                    }
+                    self.emit_operand_to_reg(l, "w9", function, asm);
 
                     // 2. load right operand
-                    match r {
-                        Operand::Var(slot) => {
-                            // 1. load src operand into w10
-                            writeln!(asm, "\tldr\tw10, [sp, #{}]", function.slot_offset(slot)).unwrap();
-                        }
-                        Operand::Const(constant) => {
-                            // 1. move constant into w10
-                            writeln!(asm, "\tmov\tw10, #{}", constant).unwrap();
-                        }
-                    }
+                    self.emit_operand_to_reg(r, "w10", function, asm);
 
                     // 3. perform binary operation
                     match op {
@@ -145,38 +127,20 @@ impl Arm64AsmEmitter {
                     writeln!(asm, "\tstr\tw9, [sp, #{}]", function.slot_offset(dst)).unwrap();
                 }
 
-                IrStatement::Copy { dst, src } => match src {
-                    Operand::Var(slot) => {
-                        // 1. load src operand into w9
-                        writeln!(asm, "\tldr\tw9, [sp, #{}]", function.slot_offset(slot)).unwrap();
-                        // 2. store w9 into dst slot
-                        writeln!(asm, "\tstr\tw9, [sp, #{}]", function.slot_offset(dst)).unwrap();
-                    }
-                    Operand::Const(constant) => {
-                        // 1. move constant into w9
-                        writeln!(asm, "\tmov\tw9, #{}", constant).unwrap();
-                        // 2. store w9 into dst slot
-                        writeln!(asm, "\tstr\tw9, [sp, #{}]", function.slot_offset(dst)).unwrap();
-                    }
-                },
+                IrStatement::Copy { dst, src } => {
+                    // 1. load src operand into w9
+                    self.emit_operand_to_reg(src, "w9", function, asm);
+
+                    // 2. store w9 into dst slot
+                    writeln!(asm, "\tstr\tw9, [sp, #{}]", function.slot_offset(dst)).unwrap();
+                }
 
                 IrStatement::Label(label) => writeln!(asm, ".L{}:", label).unwrap(),
                 IrStatement::Jmp(label) => writeln!(asm, "\tb\t.L{}", label).unwrap(),
 
                 IrStatement::JmpIfZero { cond, target } => {
-                    match cond {
-                        Operand::Var(slot) => {
-                            // load src operand into w#
-                            writeln!(asm, "\tldr\tw9, [sp, #{}]", function.slot_offset(slot)).unwrap();
-                        }
-                        Operand::Const(constant) => {
-                            // move constant into w#
-                            writeln!(asm, "\tmov\tw9, #{}", constant).unwrap();
-                        }
-                    }
-
-                    // compare and jump to target if zero
-                    writeln!(asm, "\tcbz\tw9, .L{}", target).unwrap();
+                    self.emit_operand_to_reg(cond, "w9", function, asm);
+                    writeln!(asm, "\tcbz\tw9, .L{}", target).unwrap(); // compare and jump to target if zero
                 }
 
                 IrStatement::Call { dst, name, args } => {
@@ -190,16 +154,8 @@ impl Arm64AsmEmitter {
 
                     // 1. Store the arguments in w0-w7 in order
                     for (index, arg) in args.iter().enumerate() {
-                        match arg {
-                            Operand::Var(slot) => {
-                                // load src operand into w#
-                                writeln!(asm, "\tldr\tw{}, [sp, #{}]", index, function.slot_offset(slot)).unwrap();
-                            }
-                            Operand::Const(constant) => {
-                                // move constant into w#
-                                writeln!(asm, "\tmov\tw{}, #{}", index, constant).unwrap();
-                            }
-                        }
+                        let reg = format!("w{index}");
+                        self.emit_operand_to_reg(arg, reg.as_str(), function, asm);
                     }
 
                     // 2. Call the procedure
@@ -212,13 +168,7 @@ impl Arm64AsmEmitter {
                 }
 
                 IrStatement::Ret(op) => {
-                    match op {
-                        Operand::Var(slot) => {
-                            writeln!(asm, "\tldr\tw0, [sp, #{}]", function.slot_offset(slot)).unwrap()
-                        }
-                        Operand::Const(constant) => writeln!(asm, "\tmov\tw0, #{}", constant).unwrap(),
-                    }
-
+                    self.emit_operand_to_reg(op, "w0", function, asm);
                     self.emit_epilogue(function, asm);
                     *did_emit_epilogue = true;
                 }
@@ -229,5 +179,22 @@ impl Arm64AsmEmitter {
             }
         }
         Ok(())
+    }
+
+    fn emit_operand_to_reg(&self, operand: &Operand, reg: &str, function: &IrFunction, asm: &mut String) {
+        match operand {
+            Operand::Var(slot) => writeln!(asm, "\tldr\t{}, [sp, #{}]", reg, function.slot_offset(slot)).unwrap(),
+            Operand::Const(constant) => self.emit_imm_const_to_reg(*constant, reg, asm),
+        }
+    }
+
+    fn emit_imm_const_to_reg(&self, constant: i64, reg: &str, asm: &mut String) {
+        let bits = constant as u32;
+        let (low, high) = (bits & 0xffff, bits >> 16);
+
+        writeln!(asm, "\tmov\t{}, #{}", reg, low).unwrap();
+        if high != 0 {
+            writeln!(asm, "\tmovk\t{}, #{}, lsl #16", reg, high).unwrap();
+        }
     }
 }

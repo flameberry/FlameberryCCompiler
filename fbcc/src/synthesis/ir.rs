@@ -698,7 +698,18 @@ impl IrEmitter {
 
             Expression::Constant(constant) => match constant {
                 Constant::Integer(integertype) => match integertype {
-                    IntegerType::Generic(integer) => return Ok((Operand::Const(integer.clone()), Vec::new())),
+                    IntegerType::Generic(integer) => {
+                        // The backend is 32-bit `int` only; reject constants that
+                        // don't fit instead of silently truncating in codegen.
+                        if i32::try_from(*integer).is_err() {
+                            return Err(CompilerError {
+                                kind: CompilerErrorKind::SemanticError,
+                                message: format!("integer constant `{integer}` does not fit in `int`"),
+                                location: None,
+                            });
+                        }
+                        return Ok((Operand::Const(integer.clone()), Vec::new()));
+                    }
                     other => {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::InternalError,
