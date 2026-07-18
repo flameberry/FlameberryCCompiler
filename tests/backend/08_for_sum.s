@@ -26,6 +26,7 @@ _main:
 	str	w9, [sp, #16]
 	ldr	w9, [sp, #16]
 	str	w9, [sp, #0]
+.L2:
 	ldr	w9, [sp, #4]
 	mov	w10, #1
 	add	w9, w9, w10

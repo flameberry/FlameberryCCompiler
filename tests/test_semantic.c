@@ -22,6 +22,10 @@ void func(double x) {
 }
 
 int main() {
+	switch (a) {
+		break;
+	}
+
 	{
 		char shadowed;
 		do {

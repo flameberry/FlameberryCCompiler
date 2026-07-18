@@ -10,18 +10,11 @@ use super::node::Node;
 // TODOS: Store the scope ID somewhere in the AST probably
 // ...to ensure that every time we need to find a symbol from the AST we can lookup using the scope ID
 
-// Simple way to keep track of the context of the evaluation.
-// For checking whether break, continue statements are inside any valid loops
-enum EvaluationContext {
-    None,
-    Loop(u32), // Stores the depth of the loop in case of nested loops
-}
-
 pub struct SemanticAnalyzer<'a> {
     symboltableref: &'a mut SymbolTable,
     scopeidstack: Vec<u32>,
     counter: u32,
-    evaluation_context: EvaluationContext,
+    num_loops_or_switches: u32,
 }
 
 impl<'a> SemanticAnalyzer<'a> {
@@ -30,7 +23,7 @@ impl<'a> SemanticAnalyzer<'a> {
             symboltableref,
             scopeidstack: vec![0], // 0 represents global scope
             counter: 1,
-            evaluation_context: EvaluationContext::None,
+            num_loops_or_switches: 0,
         }
     }
 
@@ -56,21 +49,6 @@ impl<'a> SemanticAnalyzer<'a> {
 
     fn pop_scope(&mut self) {
         self.scopeidstack.pop();
-    }
-
-    fn push_loop(&mut self) {
-        match self.evaluation_context {
-            EvaluationContext::None => self.evaluation_context = EvaluationContext::Loop(1),
-            EvaluationContext::Loop(depth) => self.evaluation_context = EvaluationContext::Loop(depth + 1),
-        }
-    }
-
-    fn pop_loop(&mut self) {
-        match self.evaluation_context {
-            EvaluationContext::None => panic!("pop_loop called when no loop has been pushed."),
-            EvaluationContext::Loop(1) => self.evaluation_context = EvaluationContext::None,
-            EvaluationContext::Loop(depth) => self.evaluation_context = EvaluationContext::Loop(depth - 1),
-        }
     }
 
     pub fn analyze(&mut self, translation_unit: &mut TranslationUnit) -> Result<(), CompilerError> {
@@ -215,7 +193,7 @@ impl<'a> SemanticAnalyzer<'a> {
 
             Statement::ForStatement(for_stmt) => {
                 // This is done for verification of break and continue statements
-                self.push_loop();
+                self.num_loops_or_switches += 1;
 
                 // So understand this, I'm considering a for-loop itself consisting of 2 scopes:
                 //
@@ -279,7 +257,7 @@ impl<'a> SemanticAnalyzer<'a> {
                 self.pop_scope();
 
                 // This is done for verification of break and continue statements
-                self.pop_loop();
+                self.num_loops_or_switches -= 1;
             }
 
             Statement::WhileStatement(while_stmt) | Statement::DoWhileStatement(while_stmt) => {
@@ -308,10 +286,10 @@ impl<'a> SemanticAnalyzer<'a> {
                     }
                 }
 
-                self.push_loop();
+                self.num_loops_or_switches += 1;
                 // 2. Evaluate the while-loop body
                 self.validate_statement(&mut while_stmt.statement.node, expected_return_type)?;
-                self.pop_loop();
+                self.num_loops_or_switches -= 1;
             }
 
             Statement::IfStatement(if_stmt) => {
@@ -348,8 +326,14 @@ impl<'a> SemanticAnalyzer<'a> {
                 }
             }
 
+            Statement::SwitchStatement(switch_stmt) => {
+                self.num_loops_or_switches += 1;
+                self.validate_statement(&mut switch_stmt.statement.node, expected_return_type)?;
+                self.num_loops_or_switches -= 1;
+            }
+
             Statement::BreakStatement | Statement::ContinueStatement => {
-                if !matches!(self.evaluation_context, EvaluationContext::Loop(_)) {
+                if self.num_loops_or_switches == 0 {
                     let keyword = match statement {
                         Statement::BreakStatement => "break",
                         Statement::ContinueStatement => "continue",

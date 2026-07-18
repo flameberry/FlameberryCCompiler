@@ -5,13 +5,13 @@ use crate::{
     analysis::{
         ast::{
             BinaryOperator,
-            BlockItem::{self, Declaration},
-            Declarator::{self, FunctionDeclarator},
+            BlockItem::{self},
+            Declarator::{self},
             Expression::{self},
             ExternalDeclaration, ForInitializer, FunctionDefinition, Initializer, Statement, TranslationUnit,
-            UnaryOperator, UnaryOperatorExpression,
+            UnaryOperator,
         },
-        node::Node,
+        node::{Node, Span},
     },
     core::{
         errors::{CompilerError, CompilerErrorKind},
@@ -246,11 +246,15 @@ fn lookup(scopes: &[HashMap<String, SlotID>], name: &str) -> Option<SlotID> {
 
 pub struct IrEmitter {
     labelcounter: u32,
+    loopstack: Vec<(u32, u32)>, // (continue label, break label)
 }
 
 impl IrEmitter {
     pub fn new() -> Self {
-        IrEmitter { labelcounter: 0 }
+        IrEmitter {
+            labelcounter: 0,
+            loopstack: Vec::new(),
+        }
     }
 
     fn newlabel(&mut self) -> (u32, IrStatement) {
@@ -270,7 +274,7 @@ impl IrEmitter {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::InternalError,
                         message: "global variables are not implemented in IR yet".to_string(),
-                        location: None,
+                        location: Some(extdecl.span.start),
                     })
                 }
             }
@@ -339,7 +343,7 @@ impl IrEmitter {
                     units.extend(self.emit_declaration(declaration, &mut framebuilder, &mut scopes)?);
                 }
                 BlockItem::Statement(stmt) => {
-                    units.extend(self.emit_stmt(&stmt, &mut scopes, &mut framebuilder)?);
+                    units.extend(self.emit_stmt(&stmt, &blockitem.span, &mut scopes, &mut framebuilder)?);
                 }
             }
         }
@@ -395,6 +399,7 @@ impl IrEmitter {
     fn emit_stmt(
         &mut self,
         stmt: &Statement,
+        span: &Span,
         scopes: &mut Vec<HashMap<String, SlotID>>,
         framebuilder: &mut FrameBuilder,
     ) -> Result<Vec<IrStatement>, CompilerError> {
@@ -409,7 +414,7 @@ impl IrEmitter {
                             self.emit_declaration(declaration, framebuilder, scopes)?;
                         }
                         BlockItem::Statement(stmt) => {
-                            units.extend(self.emit_stmt(&stmt, scopes, framebuilder)?);
+                            units.extend(self.emit_stmt(&stmt, &blockitem.span, scopes, framebuilder)?);
                         }
                     }
                 }
@@ -435,12 +440,12 @@ impl IrEmitter {
                     target: lelse_id,
                 });
 
-                units.extend(self.emit_stmt(&ifstmt.if_block.node, scopes, framebuilder)?);
+                units.extend(self.emit_stmt(&ifstmt.if_block.node, &ifstmt.if_block.span, scopes, framebuilder)?);
                 if let Some(else_block) = &ifstmt.else_block {
                     let (lendif_id, lendif) = self.newlabel();
                     units.push(IrStatement::Jmp(lendif_id));
                     units.push(lelse);
-                    units.extend(self.emit_stmt(&else_block.node, scopes, framebuilder)?);
+                    units.extend(self.emit_stmt(&else_block.node, &else_block.span, scopes, framebuilder)?);
                     units.push(lendif);
                 } else {
                     units.push(lelse);
@@ -460,7 +465,19 @@ impl IrEmitter {
                     target: lend_id,
                 });
 
-                units.extend(self.emit_stmt(&whilestmt.statement.node, scopes, framebuilder)?);
+                // storing labels for continue and break statement to jump to
+                self.loopstack.push((lstart_id, lend_id));
+
+                units.extend(self.emit_stmt(
+                    &whilestmt.statement.node,
+                    &whilestmt.statement.span,
+                    scopes,
+                    framebuilder,
+                )?);
+
+                // popped labels as emitting ir for the body is finished
+                self.loopstack.pop();
+
                 units.push(IrStatement::Jmp(lstart_id));
                 units.push(lend);
             }
@@ -480,6 +497,12 @@ impl IrEmitter {
                 let (startid, start) = self.newlabel();
                 let (endid, end) = self.newlabel();
 
+                let (continueid, continue_label) = if forstmt.step.is_some() {
+                    self.newlabel()
+                } else {
+                    (startid, start.clone())
+                };
+
                 units.push(start);
 
                 if let Some(condition) = &forstmt.condition {
@@ -492,9 +515,16 @@ impl IrEmitter {
                     });
                 }
 
-                units.extend(self.emit_stmt(&forstmt.statement.node, scopes, framebuilder)?);
+                // storing labels for continue and break statement to jump to
+                self.loopstack.push((continueid, endid));
+
+                units.extend(self.emit_stmt(&forstmt.statement.node, &forstmt.statement.span, scopes, framebuilder)?);
+
+                // popped labels as emitting ir for the body is finished
+                self.loopstack.pop();
 
                 if let Some(step) = &forstmt.step {
+                    units.push(continue_label);
                     let (_, step_ir) = self.emit_expr(&step.node, scopes, framebuilder)?;
                     units.extend(step_ir);
                 }
@@ -503,13 +533,43 @@ impl IrEmitter {
                 units.push(end);
             }
 
+            Statement::BreakStatement => {
+                if self.loopstack.len() <= 0 {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::InternalError,
+                        message: "Semantic analyzer should've detected stray break statement".to_string(),
+                        location: Some(span.start),
+                    });
+                }
+
+                units.push(IrStatement::Jmp(self.loopstack.last().unwrap().1));
+            }
+
+            Statement::ContinueStatement => {
+                if self.loopstack.len() <= 0 {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::InternalError,
+                        message: "Semantic analyzer should've detected stray continue statement".to_string(),
+                        location: Some(span.start),
+                    });
+                }
+
+                units.push(IrStatement::Jmp(self.loopstack.last().unwrap().0));
+            }
+
             Statement::ReturnStatement(returnstmt) => {
                 let (operand, expr_ir) = self.emit_expr(&returnstmt.node, scopes, framebuilder)?;
                 units.extend(expr_ir);
                 units.push(IrStatement::Ret(operand));
             }
 
-            _ => todo!(),
+            _ => {
+                return Err(CompilerError {
+                    kind: CompilerErrorKind::InternalError,
+                    message: "this statement is not supported by IR lowering yet".to_string(),
+                    location: Some(span.start),
+                })
+            }
         }
         Ok(units)
     }
@@ -538,15 +598,15 @@ impl IrEmitter {
                         });
                         return Ok((Operand::Var(dst), units));
                     }
-                    // PostIncrement
-                    // PostDecrement,
-                    // PreIncrement,
-                    // PreDecrement,
-                    // Address,
-                    // Indirection,
-                    // Complement,
-                    // Negate,
-                    _ => todo!(),
+                    // PostIncrement, PostDecrement, PreIncrement, PreDecrement,
+                    // Address, Indirection, Complement, Negate
+                    op => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::InternalError,
+                            message: format!("unary operator `{:?}` is not supported by IR lowering yet", op),
+                            location: Some(unaryexpr.operator.span.start),
+                        })
+                    }
                 }
             }
 
@@ -557,7 +617,7 @@ impl IrEmitter {
                 let mut units = [lhs_ir.as_slice(), rhs_ir.as_slice()].concat();
 
                 match &binaryexpr.operator.node {
-                    BinaryOperator::Index
+                    op @ (BinaryOperator::Index
                     | BinaryOperator::LogicalAnd
                     | BinaryOperator::LogicalOr
                     | BinaryOperator::AssignMultiply
@@ -569,7 +629,13 @@ impl IrEmitter {
                     | BinaryOperator::AssignShiftRight
                     | BinaryOperator::AssignBitwiseAnd
                     | BinaryOperator::AssignBitwiseXor
-                    | BinaryOperator::AssignBitwiseOr => todo!(),
+                    | BinaryOperator::AssignBitwiseOr) => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::InternalError,
+                            message: format!("binary operator `{:?}` is not supported by IR lowering yet", op),
+                            location: Some(binaryexpr.operator.span.start),
+                        })
+                    }
 
                     BinaryOperator::Assign => {
                         if let Operand::Var(lhs_slot) = &lhs {
@@ -633,9 +699,21 @@ impl IrEmitter {
             Expression::Constant(constant) => match constant {
                 Constant::Integer(integertype) => match integertype {
                     IntegerType::Generic(integer) => return Ok((Operand::Const(integer.clone()), Vec::new())),
-                    _ => todo!(),
+                    other => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::InternalError,
+                            message: format!("integer constant `{:?}` is not supported by IR lowering yet", other),
+                            location: None,
+                        })
+                    }
                 },
-                _ => todo!(),
+                other => {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::InternalError,
+                        message: format!("constant `{:?}` is not supported by IR lowering yet", other),
+                        location: None,
+                    })
+                }
             },
 
             Expression::ImplicitCast(cast) => {
@@ -697,16 +775,16 @@ impl IrEmitter {
                 return Ok((Operand::Var(dst), units));
             }
 
-            Expression::Empty => {}
-            _ => {
-                println!("{:?}", expr);
-                return Err(CompilerError {
-                    kind: CompilerErrorKind::InternalError,
-                    message: format!("emit_expr not implemented for {:?} yet", expr),
-                    location: None,
-                });
-            }
+            Expression::Empty => Err(CompilerError {
+                kind: CompilerErrorKind::InternalError,
+                message: "empty expression reached IR lowering".to_string(),
+                location: None,
+            }),
+            _ => Err(CompilerError {
+                kind: CompilerErrorKind::InternalError,
+                message: format!("emit_expr not implemented for {:?} yet", expr),
+                location: None,
+            }),
         }
-        todo!()
     }
 }

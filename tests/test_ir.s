@@ -80,6 +80,7 @@ _sum_to:
 	str	w9, [sp, #20]
 	ldr	w9, [sp, #20]
 	str	w9, [sp, #4]
+.L3:
 	ldr	w9, [sp, #8]
 	mov	w10, #1
 	add	w9, w9, w10
@@ -110,18 +111,18 @@ _max:
 	cset	w9, ne
 	str	w9, [sp, #12]
 	ldr	w9, [sp, #12]
-	cbz	w9, .L3
+	cbz	w9, .L4
 	ldr	w0, [sp, #0]
 	ldp	x29, x30, [sp, #16]
 	add	sp, sp, #32
 	ret
-	b	.L4
-.L3:
+	b	.L5
+.L4:
 	ldr	w0, [sp, #4]
 	ldp	x29, x30, [sp, #16]
 	add	sp, sp, #32
 	ret
-.L4:
+.L5:
 	.globl	_main
 _main:
 	sub	sp, sp, #96
@@ -157,7 +158,7 @@ _main:
 	str	w9, [sp, #40]
 	mov	w9, #0
 	str	w9, [sp, #44]
-.L5:
+.L6:
 	ldr	w9, [sp, #44]
 	mov	w10, #3
 	subs	w9, w9, w10
@@ -169,7 +170,7 @@ _main:
 	cset	w9, ne
 	str	w9, [sp, #52]
 	ldr	w9, [sp, #52]
-	cbz	w9, .L6
+	cbz	w9, .L7
 	ldr	w9, [sp, #40]
 	ldr	w10, [sp, #32]
 	add	w9, w9, w10
@@ -182,8 +183,8 @@ _main:
 	str	w9, [sp, #60]
 	ldr	w9, [sp, #60]
 	str	w9, [sp, #44]
-	b	.L5
-.L6:
+	b	.L6
+.L7:
 	ldr	w9, [sp, #40]
 	ldr	w10, [sp, #16]
 	add	w9, w9, w10
