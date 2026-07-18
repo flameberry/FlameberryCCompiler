@@ -3,7 +3,7 @@ use crate::analysis::parser::Parser;
 use crate::analysis::semantic_analyzer::SemanticAnalyzer;
 use crate::core::errors::CompilerError;
 use crate::core::symboltable::SymbolTable;
-use crate::synthesis::asm::AsmEmitter;
+use crate::synthesis::asm::Arm64AsmEmitter;
 use crate::synthesis::ir::IrEmitter;
 
 #[derive(Default)]
@@ -41,7 +41,7 @@ impl Compiler {
             }
         }
 
-        let asm = AsmEmitter::new().emit(&ir)?;
+        let asm = Arm64AsmEmitter::new().emit(&ir)?;
         if dump_asm {
             println!("------- Assembly -------\n\n{}", asm);
         }

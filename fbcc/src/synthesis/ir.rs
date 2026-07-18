@@ -26,10 +26,10 @@ pub enum BinaryOp {
     Mul,
     Div,
     Mod,
+    Lt,
     Le,
-    LeEq,
-    Gr,
-    GrEq,
+    Gt,
+    Ge,
     Eq,
     NEq,
     And,
@@ -108,10 +108,10 @@ impl fmt::Display for BinaryOp {
             BinaryOp::Mul => "*",
             BinaryOp::Div => "/",
             BinaryOp::Mod => "%",
-            BinaryOp::Le => "<",
-            BinaryOp::LeEq => "<=",
-            BinaryOp::Gr => ">",
-            BinaryOp::GrEq => ">=",
+            BinaryOp::Lt => "<",
+            BinaryOp::Le => "<=",
+            BinaryOp::Gt => ">",
+            BinaryOp::Ge => ">=",
             BinaryOp::Eq => "==",
             BinaryOp::NEq => "!=",
             BinaryOp::And => "&",
@@ -508,6 +508,7 @@ impl IrEmitter {
                 units.extend(expr_ir);
                 units.push(IrStatement::Ret(operand));
             }
+
             _ => todo!(),
         }
         Ok(units)
@@ -593,10 +594,10 @@ impl IrEmitter {
                             BinaryOperator::Multiply => BinaryOp::Mul,
                             BinaryOperator::Divide => BinaryOp::Div,
                             BinaryOperator::Modulo => BinaryOp::Mod,
-                            BinaryOperator::Less => BinaryOp::Le,
-                            BinaryOperator::LessOrEqual => BinaryOp::LeEq,
-                            BinaryOperator::Greater => BinaryOp::Gr,
-                            BinaryOperator::GreaterOrEqual => BinaryOp::GrEq,
+                            BinaryOperator::Less => BinaryOp::Lt,
+                            BinaryOperator::LessOrEqual => BinaryOp::Le,
+                            BinaryOperator::Greater => BinaryOp::Gt,
+                            BinaryOperator::GreaterOrEqual => BinaryOp::Ge,
                             BinaryOperator::Equals => BinaryOp::Eq,
                             BinaryOperator::NotEquals => BinaryOp::NEq,
                             BinaryOperator::BitwiseAnd => BinaryOp::And,

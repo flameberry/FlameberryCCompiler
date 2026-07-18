@@ -128,7 +128,9 @@ where
         if !predicate(ch) {
             break;
         }
-        cidx += 1;
+        // cidx is used by callers to slice the buffer, so it must advance by the
+        // UTF-8 byte width of each char, not by 1 per char
+        cidx += ch.len_utf8();
     }
     (&src[..cidx], cidx)
 }

@@ -101,7 +101,7 @@ fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
     out
 }
 
-fn compile_file(path: &PathBuf, cli_options: &CliOptions) {
+fn compile_file(path: &PathBuf, cli_options: &CliOptions) -> bool {
     let source = fs::read_to_string(path).unwrap();
     let result = Compiler::new().compile(
         source.as_str(),
@@ -120,30 +120,41 @@ fn compile_file(path: &PathBuf, cli_options: &CliOptions) {
                     .unwrap_or_else(|| path.with_extension("s"));
                 if let Err(e) = fs::write(&out_path, asm) {
                     eprintln!("failed to write {}: {e}", out_path.display());
+                    return false;
                 }
             }
+            true
         }
         Err(error) => {
             if let Some(loc) = error.location {
                 let line = source.lines().nth(loc.line - 1).unwrap();
                 eprintln!("{}", format_error(&error, path, line));
+            } else {
+                eprintln!("error: {}", error.message);
             }
+            false
         }
     }
 }
 
-fn run(cli_options: &CliOptions) {
+fn run(cli_options: &CliOptions) -> bool {
+    let mut success = true;
     for path in &cli_options.paths {
-        compile_file(&path, cli_options);
+        success &= compile_file(&path, cli_options);
     }
+    success
 }
 
 fn main() {
     let cli_options = parse_cli(std::env::args().skip(1).collect()).unwrap();
     let start = Instant::now();
 
-    run(&cli_options);
+    let success = run(&cli_options);
 
     let end = Instant::now() - start;
     println!("Compilation took {:?}", end);
+
+    if !success {
+        std::process::exit(1);
+    }
 }
