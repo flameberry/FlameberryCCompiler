@@ -91,9 +91,10 @@ fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
     // Source code line with gutter
     out += &format!("   {} {}\n", format!("{:>4} |", line).bright_black(), line_str);
 
-    // Underline with caret (1-based to 0-based column fix)
+    // Underline with caret (1-based to 0-based column fix; saturate so a
+    // synthetic column 0 doesn't underflow and panic)
     let mut underline = String::new();
-    underline.push_str(&" ".repeat(col - 1));
+    underline.push_str(&" ".repeat(col.saturating_sub(1)));
     underline.push('^');
 
     out += &format!("   {} {}\n", "     |".bright_black(), underline.red());
@@ -127,7 +128,9 @@ fn compile_file(path: &PathBuf, cli_options: &CliOptions) -> bool {
         }
         Err(error) => {
             if let Some(loc) = error.location {
-                let line = source.lines().nth(loc.line - 1).unwrap();
+                // Saturate line 0 and tolerate out-of-range lines so a bogus
+                // location degrades the diagnostic instead of panicking.
+                let line = source.lines().nth(loc.line.saturating_sub(1)).unwrap_or("");
                 eprintln!("{}", format_error(&error, path, line));
             } else {
                 eprintln!("error: {}", error.message);
