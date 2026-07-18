@@ -432,6 +432,40 @@ impl<'a> SemanticAnalyzer<'a> {
         //      b. Or if it is a constant then convert it immediately
 
         match expression {
+            Expression::UnaryOperator(unary_expr) => {
+                let operand_type = self.validate_expr(&mut unary_expr.operand.node, &unary_expr.operand.span)?;
+                match &unary_expr.operator.node {
+                    UnaryOperator::Minus | UnaryOperator::Plus | UnaryOperator::Complement | UnaryOperator::Negate => {
+                        if !operand_type.datatype.is_integer_type() {
+                            return Err(CompilerError {
+                                kind: CompilerErrorKind::SemanticError,
+                                message: format!(
+                                    "unary operator {} is only supported on integer types for now",
+                                    unary_expr.operator.node
+                                ),
+                                location: Some(unary_expr.operator.span.start),
+                            });
+                        }
+
+                        if matches!(&unary_expr.operator.node, UnaryOperator::Negate) {
+                            return Ok(Type {
+                                datatype: DataType::Int { signed: true },
+                                qualifiers: operand_type.qualifiers,
+                            });
+                        } else {
+                            return Ok(operand_type);
+                        }
+                    }
+                    op => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SemanticError,
+                            message: format!("unary operator {} is not supported yet", op),
+                            location: Some(unary_expr.operator.span.start),
+                        })
+                    }
+                }
+            }
+
             Expression::BinaryOperator(binary_expr) => {
                 // 1. Evaluate LHS and RHS type
                 let lhs_typeinfo = self.validate_expr(&mut binary_expr.lhs.node, &binary_expr.lhs.span)?;

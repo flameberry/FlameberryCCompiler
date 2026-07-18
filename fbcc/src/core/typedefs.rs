@@ -102,7 +102,7 @@ impl DataType {
         }
     }
 
-    fn is_integer_type(&self) -> bool {
+    pub(crate) fn is_integer_type(&self) -> bool {
         matches!(
             self,
             DataType::Bool

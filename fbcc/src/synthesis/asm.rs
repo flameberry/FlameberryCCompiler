@@ -1,6 +1,10 @@
 use crate::{
     core::errors::{CompilerError, CompilerErrorKind},
-    synthesis::ir::{BinaryOp, IrFunction, IrStatement, Operand},
+    synthesis::ir::{
+        BinaryOp, IrFunction,
+        IrStatement::{self},
+        Operand, UnaryOp,
+    },
 };
 use std::fmt::Write;
 
@@ -127,6 +131,21 @@ impl Arm64AsmEmitter {
                     writeln!(asm, "\tstr\tw9, [sp, #{}]", function.slot_offset(dst)).unwrap();
                 }
 
+                IrStatement::UnaryOp { dst, op, src } => {
+                    self.emit_operand_to_reg(src, "w9", function, asm);
+
+                    match op {
+                        UnaryOp::Minus => writeln!(asm, "\tneg\tw9, w9").unwrap(),
+                        UnaryOp::Comp => writeln!(asm, "\tmvn\tw9, w9").unwrap(),
+                        UnaryOp::Not => {
+                            writeln!(asm, "\tsubs\tw9, w9, #0").unwrap();
+                            writeln!(asm, "\tcset\tw9, eq").unwrap();
+                        }
+                    }
+
+                    writeln!(asm, "\tstr\tw9, [sp, #{}]", function.slot_offset(dst)).unwrap();
+                }
+
                 IrStatement::Copy { dst, src } => {
                     // 1. load src operand into w9
                     self.emit_operand_to_reg(src, "w9", function, asm);
@@ -171,10 +190,6 @@ impl Arm64AsmEmitter {
                     self.emit_operand_to_reg(op, "w0", function, asm);
                     self.emit_epilogue(function, asm);
                     *did_emit_epilogue = true;
-                }
-
-                _ => {
-                    panic!("ir statement not supported yet: {:?}", statement)
                 }
             }
         }

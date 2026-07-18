@@ -41,6 +41,7 @@ pub enum BinaryOp {
 
 #[derive(Debug, Clone)]
 pub enum UnaryOp {
+    Minus,
     Comp,
     Not,
 }
@@ -127,6 +128,7 @@ impl fmt::Display for BinaryOp {
 impl fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let symbol = match self {
+            UnaryOp::Minus => "-",
             UnaryOp::Comp => "~",
             UnaryOp::Not => "!",
         };
@@ -582,32 +584,33 @@ impl IrEmitter {
     ) -> Result<(Operand, Vec<IrStatement>), CompilerError> {
         match expr {
             Expression::UnaryOperator(unaryexpr) => {
-                let (unaryop_result, units) = self.emit_expr(&unaryexpr.operand.node, scopes, framebuilder)?;
+                let (unaryop_result, mut units) = self.emit_expr(&unaryexpr.operand.node, scopes, framebuilder)?;
 
-                match &unaryexpr.operator.node {
+                let unaryop = match &unaryexpr.operator.node {
+                    // `+x` is a no-op on int; forward the operand as-is.
                     UnaryOperator::Plus => return Ok((unaryop_result, units)),
-                    // `-x` has no dedicated IR op; lower it as `0 - x` into a fresh temp.
-                    UnaryOperator::Minus => {
-                        let mut units = units;
-                        let dst = framebuilder.allocate(Type::new(DataType::Int { signed: true }))?;
-                        units.push(IrStatement::BinaryOp {
-                            dst: dst.clone(),
-                            op: BinaryOp::Sub,
-                            l: Operand::Const(0),
-                            r: unaryop_result,
-                        });
-                        return Ok((Operand::Var(dst), units));
-                    }
+                    UnaryOperator::Minus => UnaryOp::Minus,
+                    UnaryOperator::Complement => UnaryOp::Comp,
+                    UnaryOperator::Negate => UnaryOp::Not,
+
                     // PostIncrement, PostDecrement, PreIncrement, PreDecrement,
-                    // Address, Indirection, Complement, Negate
+                    // Address, Indirection
                     op => {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::InternalError,
-                            message: format!("unary operator `{:?}` is not supported by IR lowering yet", op),
+                            message: format!("unary operator `{op}` is not supported by IR lowering yet"),
                             location: Some(unaryexpr.operator.span.start),
                         })
                     }
-                }
+                };
+
+                let dst = framebuilder.allocate(Type::new(DataType::Int { signed: true }))?;
+                units.push(IrStatement::UnaryOp {
+                    dst: dst.clone(),
+                    op: unaryop,
+                    src: unaryop_result,
+                });
+                return Ok((Operand::Var(dst), units));
             }
 
             Expression::BinaryOperator(binaryexpr) => {

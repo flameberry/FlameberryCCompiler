@@ -384,6 +384,22 @@ pub struct TranslationUnit {
     pub external_declarations: Vec<Node<ExternalDeclaration>>,
 }
 
+impl fmt::Display for UnaryOperator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let symbol = match self {
+            UnaryOperator::PostIncrement | UnaryOperator::PreIncrement => "++",
+            UnaryOperator::PostDecrement | UnaryOperator::PreDecrement => "--",
+            UnaryOperator::Address => "&",
+            UnaryOperator::Indirection => "*",
+            UnaryOperator::Plus => "+",
+            UnaryOperator::Minus => "-",
+            UnaryOperator::Complement => "~",
+            UnaryOperator::Negate => "!",
+        };
+        write!(f, "{symbol}")
+    }
+}
+
 impl fmt::Display for DeclarationSpecifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
