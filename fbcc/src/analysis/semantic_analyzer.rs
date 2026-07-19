@@ -736,8 +736,15 @@ impl<'a> SemanticAnalyzer<'a> {
                 | DataType::Bool,
             ) => true,
 
-            // Logical operators: &&, ||
-            (BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr, DataType::Bool) => true,
+            // Logical operators: &&, || — any scalar operand is testable against zero
+            (
+                BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr,
+                DataType::Int { .. }
+                | DataType::Short { .. }
+                | DataType::Long { .. }
+                | DataType::Char { .. }
+                | DataType::Bool,
+            ) => true,
 
             _ => Self::is_assignment_operator(operator),
         }

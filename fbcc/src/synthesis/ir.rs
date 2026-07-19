@@ -617,22 +617,10 @@ impl IrEmitter {
                 let (lhs, lhs_ir) = self.emit_expr(&binaryexpr.lhs.node, scopes, framebuilder)?;
                 let (rhs, rhs_ir) = self.emit_expr(&binaryexpr.rhs.node, scopes, framebuilder)?;
 
-                let mut units = [lhs_ir.as_slice(), rhs_ir.as_slice()].concat();
+                let mut units: Vec<IrStatement>;
 
                 match &binaryexpr.operator.node {
-                    op @ (BinaryOperator::Index
-                    | BinaryOperator::LogicalAnd
-                    | BinaryOperator::LogicalOr
-                    | BinaryOperator::AssignMultiply
-                    | BinaryOperator::AssignDivide
-                    | BinaryOperator::AssignModulo
-                    | BinaryOperator::AssignPlus
-                    | BinaryOperator::AssignMinus
-                    | BinaryOperator::AssignShiftLeft
-                    | BinaryOperator::AssignShiftRight
-                    | BinaryOperator::AssignBitwiseAnd
-                    | BinaryOperator::AssignBitwiseXor
-                    | BinaryOperator::AssignBitwiseOr) => {
+                    op @ BinaryOperator::Index => {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::InternalError,
                             message: format!("binary operator `{:?}` is not supported by IR lowering yet", op),
@@ -640,7 +628,72 @@ impl IrEmitter {
                         })
                     }
 
+                    BinaryOperator::LogicalAnd => {
+                        let dst = framebuilder.allocate(Type::new(DataType::Int { signed: true }))?;
+                        let (lfalseid, lfalse) = self.newlabel();
+                        let (lendid, lend) = self.newlabel();
+
+                        units = lhs_ir;
+
+                        units.push(IrStatement::JmpIfZero {
+                            cond: lhs.clone(),
+                            target: lfalseid,
+                        });
+
+                        units.extend(rhs_ir);
+                        units.push(IrStatement::BinaryOp {
+                            dst: dst.clone(),
+                            op: BinaryOp::NEq,
+                            l: rhs,
+                            r: Operand::Const(0),
+                        });
+                        units.push(IrStatement::Jmp(lendid));
+
+                        units.push(lfalse);
+                        units.push(IrStatement::Copy {
+                            dst: dst.clone(),
+                            src: Operand::Const(0),
+                        });
+
+                        units.push(lend);
+                        return Ok((Operand::Var(dst), units));
+                    }
+
+                    BinaryOperator::LogicalOr => {
+                        let dst = framebuilder.allocate(Type::new(DataType::Int { signed: true }))?;
+                        let (levalrhsid, levalrhs) = self.newlabel();
+                        let (lendid, lend) = self.newlabel();
+
+                        units = lhs_ir;
+
+                        units.push(IrStatement::JmpIfZero {
+                            cond: lhs.clone(),
+                            target: levalrhsid,
+                        });
+
+                        units.push(IrStatement::Copy {
+                            dst: dst.clone(),
+                            src: Operand::Const(1),
+                        });
+
+                        units.push(IrStatement::Jmp(lendid));
+
+                        units.push(levalrhs);
+                        units.extend(rhs_ir);
+                        units.push(IrStatement::BinaryOp {
+                            dst: dst.clone(),
+                            op: BinaryOp::NEq,
+                            l: rhs.clone(),
+                            r: Operand::Const(0),
+                        });
+
+                        units.push(lend);
+                        return Ok((Operand::Var(dst), units));
+                    }
+
                     BinaryOperator::Assign => {
+                        units = [lhs_ir.as_slice(), rhs_ir.as_slice()].concat();
+
                         if let Operand::Var(lhs_slot) = &lhs {
                             units.push(IrStatement::Copy {
                                 dst: lhs_slot.clone(),
@@ -658,26 +711,53 @@ impl IrEmitter {
 
                     _ => {
                         let binaryop = match &binaryexpr.operator.node {
-                            BinaryOperator::Plus => BinaryOp::Add,
-                            BinaryOperator::Minus => BinaryOp::Sub,
-                            BinaryOperator::Multiply => BinaryOp::Mul,
-                            BinaryOperator::Divide => BinaryOp::Div,
-                            BinaryOperator::Modulo => BinaryOp::Mod,
                             BinaryOperator::Less => BinaryOp::Lt,
                             BinaryOperator::LessOrEqual => BinaryOp::Le,
                             BinaryOperator::Greater => BinaryOp::Gt,
                             BinaryOperator::GreaterOrEqual => BinaryOp::Ge,
                             BinaryOperator::Equals => BinaryOp::Eq,
                             BinaryOperator::NotEquals => BinaryOp::NEq,
-                            BinaryOperator::BitwiseAnd => BinaryOp::And,
-                            BinaryOperator::BitwiseOr => BinaryOp::Or,
-                            BinaryOperator::BitwiseXor => BinaryOp::Xor,
-                            BinaryOperator::ShiftLeft => BinaryOp::LShift,
-                            BinaryOperator::ShiftRight => BinaryOp::RShift,
+                            BinaryOperator::Plus | BinaryOperator::AssignPlus => BinaryOp::Add,
+                            BinaryOperator::Minus | BinaryOperator::AssignMinus => BinaryOp::Sub,
+                            BinaryOperator::Multiply | BinaryOperator::AssignMultiply => BinaryOp::Mul,
+                            BinaryOperator::Divide | BinaryOperator::AssignDivide => BinaryOp::Div,
+                            BinaryOperator::Modulo | BinaryOperator::AssignModulo => BinaryOp::Mod,
+                            BinaryOperator::BitwiseAnd | BinaryOperator::AssignBitwiseAnd => BinaryOp::And,
+                            BinaryOperator::BitwiseOr | BinaryOperator::AssignBitwiseOr => BinaryOp::Or,
+                            BinaryOperator::BitwiseXor | BinaryOperator::AssignBitwiseXor => BinaryOp::Xor,
+                            BinaryOperator::ShiftLeft | BinaryOperator::AssignShiftLeft => BinaryOp::LShift,
+                            BinaryOperator::ShiftRight | BinaryOperator::AssignShiftRight => BinaryOp::RShift,
+
                             _ => unreachable!(),
                         };
 
-                        let resultop = framebuilder.allocate(Type::new(DataType::Int { signed: true }))?;
+                        let resultop = if matches!(
+                            &binaryexpr.operator.node,
+                            BinaryOperator::AssignMultiply
+                                | BinaryOperator::AssignDivide
+                                | BinaryOperator::AssignModulo
+                                | BinaryOperator::AssignPlus
+                                | BinaryOperator::AssignMinus
+                                | BinaryOperator::AssignShiftLeft
+                                | BinaryOperator::AssignShiftRight
+                                | BinaryOperator::AssignBitwiseAnd
+                                | BinaryOperator::AssignBitwiseXor
+                                | BinaryOperator::AssignBitwiseOr
+                        ) {
+                            if let Operand::Var(lhs_slot) = &lhs {
+                                lhs_slot.clone()
+                            } else {
+                                return Err(CompilerError {
+                                    kind: CompilerErrorKind::InternalError,
+                                    message: "lhs operand to an assignment expression cannot be a constant".to_string(),
+                                    location: Some(binaryexpr.lhs.span.start),
+                                });
+                            }
+                        } else {
+                            framebuilder.allocate(Type::new(DataType::Int { signed: true }))?
+                        };
+
+                        units = [lhs_ir.as_slice(), rhs_ir.as_slice()].concat();
                         units.push(IrStatement::BinaryOp {
                             dst: resultop.clone(),
                             op: binaryop,
