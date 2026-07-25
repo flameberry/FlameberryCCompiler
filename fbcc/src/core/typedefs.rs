@@ -30,33 +30,30 @@ pub enum Constant {
     Character(char),
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IntegerRank {
+    Bool,
+    Char,
+    Short,
+    Int,
+    Long,
+    LongLong,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub enum DataType {
     #[default]
     Void,
 
-    // Simple Types
-    Bool,
-    Char {
+    Integer {
+        rank: IntegerRank,
         signed: bool,
     },
-    Short {
-        signed: bool,
-    },
-    Int {
-        signed: bool,
-    },
-    Long {
-        signed: bool,
-    },
-    LongLong {
-        signed: bool,
-    },
+
     Float,
     Double,
     LongDouble,
 
-    // Complex Types
     Pointer {
         inner: Box<Type>,
     },
@@ -86,32 +83,35 @@ pub enum DataType {
     },
 }
 
+#[derive(Debug)]
+pub enum AssignmentConversionResult {
+    Identical, // source already has target type — insert nothing
+    Cast,      // legal but needs an ImplicitCast to `target`
+
+    // this way of casting can alter the behaviour of the program
+    // ...hence a warning to the user must be given
+    CastWithWarning(String),
+}
+
 impl DataType {
-    // Check if this type can represent the given constant
-    pub fn can_represent(&self, constant: &Constant) -> bool {
-        match (self, constant) {
-            (DataType::Int { signed }, Constant::Integer(IntegerType::Generic(val))) => {
-                if *signed {
-                    *val >= i32::MIN as i64 && *val <= i32::MAX as i64
-                } else {
-                    *val >= 0 && *val <= u32::MAX as i64
-                }
-            }
-            // Add more cases for other type combinations
-            _ => false,
-        }
+    pub fn new_integer(rank: IntegerRank, signed: bool) -> Self {
+        Self::Integer { rank, signed: signed }
     }
 
-    pub(crate) fn is_integer_type(&self) -> bool {
-        matches!(
-            self,
-            DataType::Bool
-                | DataType::Char { .. }
-                | DataType::Short { .. }
-                | DataType::Int { .. }
-                | DataType::Long { .. }
-                | DataType::LongLong { .. }
-        )
+    pub fn is_integer(&self) -> bool {
+        matches!(self, DataType::Integer { .. })
+    }
+
+    pub fn is_arithmetic(&self) -> bool {
+        self.is_integer() || matches!(self, DataType::Float | DataType::Double | DataType::LongDouble)
+    }
+
+    pub fn is_scalar(&self) -> bool {
+        self.is_arithmetic() || matches!(self, DataType::Pointer { .. })
+    }
+
+    pub fn is_pointer(&self) -> bool {
+        matches!(self, DataType::Pointer { .. })
     }
 }
 
@@ -121,13 +121,6 @@ pub struct TypeQualifiers {
     pub is_volatile: bool,
     pub is_restrict: bool,
     pub is_atomic: bool,
-}
-
-pub enum TypeCompatibility {
-    Identical,
-    Compatible,
-    ImplicitConversion { datatype: DataType },
-    Incompatible,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
@@ -155,12 +148,17 @@ impl Type {
     pub fn size(&self) -> Result<usize, CompilerError> {
         let size = match &self.datatype {
             DataType::Void => 0,
-            DataType::Bool => 1,
-            DataType::Char { .. } => 1,
-            DataType::Short { .. } => 2,
-            DataType::Int { .. } => 4,
-            DataType::Long { .. } => 8,
-            DataType::LongLong { .. } => 8,
+            DataType::Integer {
+                rank: subtype,
+                signed: _,
+            } => match subtype {
+                IntegerRank::Bool => 1,
+                IntegerRank::Char { .. } => 1,
+                IntegerRank::Short { .. } => 2,
+                IntegerRank::Int { .. } => 4,
+                IntegerRank::Long { .. } => 8,
+                IntegerRank::LongLong { .. } => 8,
+            },
             DataType::Float => 4,
             DataType::Double => 8,
             DataType::LongDouble => 8, // Apple arm64: long double == double
@@ -179,12 +177,17 @@ impl Type {
     pub fn align(&self) -> Result<usize, CompilerError> {
         let size = match &self.datatype {
             DataType::Void => 0,
-            DataType::Bool => 1,
-            DataType::Char { .. } => 1,
-            DataType::Short { .. } => 2,
-            DataType::Int { .. } => 4,
-            DataType::Long { .. } => 8,
-            DataType::LongLong { .. } => 8,
+            DataType::Integer {
+                rank: subtype,
+                signed: _,
+            } => match subtype {
+                IntegerRank::Bool => 1,
+                IntegerRank::Char { .. } => 1,
+                IntegerRank::Short { .. } => 2,
+                IntegerRank::Int { .. } => 4,
+                IntegerRank::Long { .. } => 8,
+                IntegerRank::LongLong { .. } => 8,
+            },
             DataType::Float => 4,
             DataType::Double => 8,
             DataType::LongDouble => 8, // Apple arm64: long double == double
@@ -256,17 +259,16 @@ impl Type {
 
                         match specifier {
                             TypeSpecifier::Void => typeinfo.datatype = DataType::Void,
-                            TypeSpecifier::Bool => typeinfo.datatype = DataType::Bool,
+                            TypeSpecifier::Bool => typeinfo.datatype = DataType::new_integer(IntegerRank::Bool, false),
+
                             TypeSpecifier::Char => {
-                                typeinfo.datatype = DataType::Char {
-                                    signed: !unsigned_keyword,
-                                }
+                                typeinfo.datatype = DataType::new_integer(IntegerRank::Char, !unsigned_keyword)
                             }
+
                             TypeSpecifier::Short => {
-                                typeinfo.datatype = DataType::Short {
-                                    signed: !unsigned_keyword,
-                                }
+                                typeinfo.datatype = DataType::new_integer(IntegerRank::Short, !unsigned_keyword)
                             }
+
                             TypeSpecifier::Float => typeinfo.datatype = DataType::Float,
 
                             // This is never possible so basically dead code
@@ -287,9 +289,7 @@ impl Type {
                                     TypeSpecifier::Long => long_count += 1,
 
                                     TypeSpecifier::Int => {
-                                        typeinfo.datatype = DataType::Int {
-                                            signed: !unsigned_keyword,
-                                        }
+                                        typeinfo.datatype = DataType::new_integer(IntegerRank::Int, !unsigned_keyword)
                                     }
 
                                     TypeSpecifier::Double => {
@@ -312,18 +312,14 @@ impl Type {
                     if is_double {
                         DataType::Double // double x;
                     } else {
-                        DataType::Int {
-                            signed: !unsigned_keyword,
-                        } // int x;
+                        DataType::new_integer(IntegerRank::Int, !unsigned_keyword)
                     }
                 }
                 1 => {
                     if is_double {
                         DataType::LongDouble // long double x;
                     } else {
-                        DataType::Long {
-                            signed: !unsigned_keyword,
-                        } // long int x;
+                        DataType::new_integer(IntegerRank::Long, !unsigned_keyword)
                     }
                 }
                 2 => {
@@ -334,9 +330,8 @@ impl Type {
                             location: Some(declaration_specifiers.first().unwrap().span.start),
                         }); // long long double x; <-- Not Allowed
                     } else {
-                        DataType::LongLong {
-                            signed: !unsigned_keyword,
-                        } // long long int x;
+                        // long long int
+                        DataType::new_integer(IntegerRank::LongLong, !unsigned_keyword)
                     }
                 }
                 _ => {
@@ -368,28 +363,28 @@ impl Type {
                         // Infer the smallest type that can hold the value
                         if *val >= 0 {
                             if *val <= i32::MAX as i64 {
-                                Type::new(DataType::Int { signed: true })
+                                Type::new(DataType::new_integer(IntegerRank::Int, true))
                             } else if *val <= i64::MAX {
-                                Type::new(DataType::Long { signed: true })
+                                Type::new(DataType::new_integer(IntegerRank::Long, true))
                             } else {
-                                Type::new(DataType::LongLong { signed: true })
+                                Type::new(DataType::new_integer(IntegerRank::LongLong, true))
                             }
                         } else {
                             if *val >= i32::MIN as i64 {
-                                Type::new(DataType::Int { signed: true })
+                                Type::new(DataType::new_integer(IntegerRank::Int, true))
                             } else if *val >= i64::MIN {
-                                Type::new(DataType::Long { signed: true })
+                                Type::new(DataType::new_integer(IntegerRank::Long, true))
                             } else {
-                                Type::new(DataType::LongLong { signed: true })
+                                Type::new(DataType::new_integer(IntegerRank::LongLong, true))
                             }
                         }
                     }
-                    IntegerType::Signed(_) => Type::new(DataType::Int { signed: true }),
-                    IntegerType::SignedLong(_) => Type::new(DataType::Long { signed: true }),
-                    IntegerType::SignedLongLong(_) => Type::new(DataType::LongLong { signed: true }),
-                    IntegerType::Unsigned(_) => Type::new(DataType::Int { signed: false }),
-                    IntegerType::UnsignedLong(_) => Type::new(DataType::Long { signed: false }),
-                    IntegerType::UnsignedLongLong(_) => Type::new(DataType::LongLong { signed: false }),
+                    IntegerType::Signed(_) => Type::new(DataType::new_integer(IntegerRank::Int, true)),
+                    IntegerType::SignedLong(_) => Type::new(DataType::new_integer(IntegerRank::Long, true)),
+                    IntegerType::SignedLongLong(_) => Type::new(DataType::new_integer(IntegerRank::LongLong, true)),
+                    IntegerType::Unsigned(_) => Type::new(DataType::new_integer(IntegerRank::Int, false)),
+                    IntegerType::UnsignedLong(_) => Type::new(DataType::new_integer(IntegerRank::Long, false)),
+                    IntegerType::UnsignedLongLong(_) => Type::new(DataType::new_integer(IntegerRank::LongLong, false)),
                 }
             }
             Constant::Float(float_type) => match float_type {
@@ -397,135 +392,131 @@ impl Type {
                 FloatingPointType::Double(_) => Type::new(DataType::Double),
                 FloatingPointType::LongDouble(_) => Type::new(DataType::LongDouble),
             },
-            Constant::Character(_) => Type::new(DataType::Char { signed: true }),
+            Constant::Character(_) => Type::new(DataType::new_integer(IntegerRank::Char, true)),
         }
     }
 
-    pub fn compare(x: &Type, y: &Type) -> TypeCompatibility {
-        if x == y {
-            TypeCompatibility::Identical
-        } else {
-            // Check if the types are compatible or not --------------------------------------------------
-            // Rule 1: If one of the types x, y is a pointer to a type T, and other is an array to the
-            // same type T, then x and y are compatible
-            if let (DataType::Pointer { inner: typeinfo }, DataType::Array { element_type, size: _ })
-            | (DataType::Array { element_type, size: _ }, DataType::Pointer { inner: typeinfo }) =
-                (&x.datatype, &y.datatype)
-            {
-                if typeinfo == element_type {
-                    return TypeCompatibility::Compatible;
+    /// uac: usual arithmetic conversions
+    pub fn common_datatype_for_uac(x: &Type, y: &Type) -> Result<DataType, CompilerError> {
+        if !x.datatype.is_arithmetic() || !y.datatype.is_arithmetic() {
+            return Err(CompilerError {
+                kind: CompilerErrorKind::SemanticError,
+                message: format!("expected arithmetic operands, instead got {}, {}", x, y),
+                location: None,
+            });
+        }
+
+        // floating point types take priority over integers
+        if x.datatype == DataType::LongDouble || y.datatype == DataType::LongDouble {
+            return Ok(DataType::LongDouble);
+        }
+
+        if x.datatype == DataType::Double || y.datatype == DataType::Double {
+            return Ok(DataType::Double);
+        }
+
+        if x.datatype == DataType::Float || y.datatype == DataType::Float {
+            return Ok(DataType::Float);
+        }
+
+        // Integer type promotion rules according to C23 standard:
+        // 1. If both operands have the same type, then no further conversion is needed.
+        //
+        // 2. Otherwise, if both operands have signed integer types or both have unsigned integer
+        // types, the operand with the type of lesser integer conversion rank is converted to the type
+        // of the operand with greater rank.
+        //
+        // 3. Otherwise, if the operand that has unsigned integer type has rank greater or equal to
+        // the rank of the type of the other operand, then the operand with signed integer type is
+        // converted to the type of the operand with unsigned integer type.
+        //
+        // 4. Otherwise, if the type of the operand with signed integer type can represent all the values
+        // of the type of the operand with unsigned integer type, then the operand with unsigned
+        // integer type is converted to the type of the operand with signed integer type.
+        //
+        // 5. Otherwise, both operands are converted to the unsigned integer type corresponding to
+        // the type of the operand with signed integer type.
+
+        if let (
+            DataType::Integer {
+                rank: x_rank,
+                signed: x_signed,
+            },
+            DataType::Integer {
+                rank: y_rank,
+                signed: y_signed,
+            },
+        ) = (x.datatype.clone(), y.datatype.clone())
+        {
+            let promote = |rank, signed| {
+                if rank < IntegerRank::Int {
+                    (IntegerRank::Int, true)
+                } else {
+                    (rank, signed)
                 }
-            }
+            };
 
-            // Check if types are can be converted implicitly to match each other ------------------------
-            // Type Promotion Rules
-            if x.datatype == DataType::LongDouble || y.datatype == DataType::LongDouble {
-                return TypeCompatibility::ImplicitConversion {
-                    datatype: DataType::LongDouble,
-                };
-            }
+            let (x_rank, x_signed) = promote(x_rank, x_signed);
+            let (y_rank, y_signed) = promote(y_rank, y_signed);
 
-            if x.datatype == DataType::Double || y.datatype == DataType::Double {
-                return TypeCompatibility::ImplicitConversion {
-                    datatype: DataType::Double,
-                };
-            }
-
-            if x.datatype == DataType::Float || y.datatype == DataType::Float {
-                return TypeCompatibility::ImplicitConversion {
-                    datatype: DataType::Float,
-                };
-            }
-
-            if x.datatype.is_integer_type() && y.datatype.is_integer_type() {
-                // Integer Promotion Rules
-                match (&x.datatype, &y.datatype) {
-                    // This statement matches signed long long with unsigned long long and promotes
-                    // ...expression to unsigned long long
-                    (DataType::LongLong { signed: true }, DataType::LongLong { signed: false })
-                    | (DataType::LongLong { signed: false }, DataType::LongLong { signed: true }) => {
-                        TypeCompatibility::ImplicitConversion {
-                            datatype: DataType::LongLong { signed: false },
-                        }
-                    }
-
-                    // This statement matches signed long with unsigned long and promotes
-                    // ...expression to unsigned long
-                    (DataType::Long { signed: true }, DataType::Long { signed: false })
-                    | (DataType::Long { signed: false }, DataType::Long { signed: true }) => {
-                        TypeCompatibility::ImplicitConversion {
-                            datatype: DataType::Long { signed: false },
-                        }
-                    }
-
-                    // This statement matches signed int with unsigned int and promotes
-                    // ...expression to unsigned int
-                    (DataType::Int { signed: true }, DataType::Int { signed: false })
-                    | (DataType::Int { signed: false }, DataType::Int { signed: true }) => {
-                        TypeCompatibility::ImplicitConversion {
-                            datatype: DataType::Int { signed: false },
-                        }
-                    }
-
-                    // NOTE: Big flaw this has is that _ matches with all other types, that means if
-                    // two types are compared where one being let's say a function and other being
-                    // a float, then they are labelled as convertible to each other using a cast, which
-                    // is wrong.
-
-                    // This statement matches long long with any lower type and promotes
-                    // ...expression to long long
-                    (DataType::LongLong { signed }, _) | (_, DataType::LongLong { signed }) => {
-                        TypeCompatibility::ImplicitConversion {
-                            datatype: DataType::LongLong { signed: *signed },
-                        }
-                    }
-
-                    // This statement matches long with any lower type and promotes
-                    // ...expression to long
-                    (DataType::Long { signed }, _) | (_, DataType::Long { signed }) => {
-                        TypeCompatibility::ImplicitConversion {
-                            datatype: DataType::Long { signed: *signed },
-                        }
-                    }
-
-                    // This statement matches int with any lower type and promotes
-                    // ...expression to int
-                    (DataType::Int { signed }, _) | (_, DataType::Int { signed }) => {
-                        TypeCompatibility::ImplicitConversion {
-                            datatype: DataType::Int { signed: *signed },
-                        }
-                    }
-
-                    // This statement promotes any type combinations which are below int to int
-                    (DataType::Char { signed }, _)
-                    | (_, DataType::Char { signed })
-                    | (DataType::Short { signed }, _)
-                    | (_, DataType::Short { signed }) => TypeCompatibility::ImplicitConversion {
-                        datatype: DataType::Int { signed: *signed },
-                    },
-
-                    // No operation can be done on void types without explicitly casting them
-                    (DataType::Void, _) | (_, DataType::Void) => TypeCompatibility::Incompatible,
-
-                    // According to the current implementation the types are not compatible ----------------------
-                    _ => unreachable!(),
-                }
+            if x_signed == y_signed {
+                Ok(DataType::new_integer(std::cmp::max(x_rank, y_rank), x_signed))
+            } else if !x_signed && x_rank > y_rank {
+                Ok(DataType::new_integer(x_rank, false))
+            } else if !y_signed && y_rank > x_rank {
+                Ok(DataType::new_integer(y_rank, false))
+            } else if x_signed && x.size()? > y.size()? {
+                Ok(DataType::new_integer(x_rank, true))
+            } else if y_signed && y.size()? > x.size()? {
+                Ok(DataType::new_integer(y_rank, true))
+            } else if x_signed {
+                Ok(DataType::new_integer(x_rank, false))
+            } else if y_signed {
+                Ok(DataType::new_integer(y_rank, false))
             } else {
-                TypeCompatibility::Incompatible
+                unreachable!()
             }
+        } else {
+            Err(CompilerError {
+                kind: CompilerErrorKind::InternalError,
+                message: format!("common_type_for_uac: during integer promotion types of operands should've been integers, instead are {}, {}", x, y),
+                location: None
+            })
         }
     }
 
-    // Helper method to create a pointer to this type
-    pub fn pointer_to(self) -> Type {
-        Type {
-            datatype: DataType::Pointer { inner: Box::new(self) },
-            qualifiers: TypeQualifiers::default(),
+    pub fn check_assignment_conversion(
+        target: &Type,
+        source: &Type,
+    ) -> Result<AssignmentConversionResult, CompilerError> {
+        if target == source {
+            return Ok(AssignmentConversionResult::Identical);
+        } else if target.datatype.is_arithmetic() && source.datatype.is_arithmetic() {
+            if target.size()? < source.size()? {
+                return Ok(AssignmentConversionResult::CastWithWarning(format!(
+                    "narrowing down types from {} to {}, possible precision loss",
+                    source, target
+                )));
+            } else {
+                return Ok(AssignmentConversionResult::Cast);
+            }
+        } else {
+            todo!()
+        }
+    }
+
+    pub fn is_boolean_compatible(ty: &Type) -> bool {
+        if ty.datatype.is_scalar() {
+            true
+        } else {
+            todo!()
         }
     }
 }
 
-// ----------------------------------------- Display Implementations for the above structs -----------------------------------------
+// ---------------------------------------------
+// Display Implementations for the above structs
+// ---------------------------------------------
 
 impl fmt::Display for TypeQualifiers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -550,21 +541,16 @@ impl fmt::Display for DataType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             DataType::Void => write!(f, "void"),
-            DataType::Bool => write!(f, "bool"),
-            DataType::Char { signed } => {
-                write!(f, "{}char", if *signed { "signed " } else { "unsigned " })
-            }
-            DataType::Short { signed } => {
-                write!(f, "{}short", if *signed { "signed " } else { "unsigned " })
-            }
-            DataType::Int { signed } => {
-                write!(f, "{}int", if *signed { "signed " } else { "unsigned " })
-            }
-            DataType::Long { signed } => {
-                write!(f, "{}long", if *signed { "signed " } else { "unsigned " })
-            }
-            DataType::LongLong { signed } => {
-                write!(f, "{}long long", if *signed { "signed " } else { "unsigned " })
+            DataType::Integer { rank: subtype, signed } => {
+                let sign = if *signed { "signed " } else { "unsigned " };
+                match subtype {
+                    IntegerRank::Bool => write!(f, "bool"),
+                    IntegerRank::Char => write!(f, "{}char", sign),
+                    IntegerRank::Short => write!(f, "{}short", sign),
+                    IntegerRank::Int => write!(f, "{}int", sign),
+                    IntegerRank::Long => write!(f, "{}long", sign),
+                    IntegerRank::LongLong => write!(f, "{}long long", sign),
+                }
             }
             DataType::Float => write!(f, "float"),
             DataType::Double => write!(f, "double"),

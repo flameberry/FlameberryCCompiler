@@ -4,7 +4,7 @@ use std::fmt;
 use crate::{
     analysis::{
         ast::{
-            BinaryOperator,
+            AssignOperator, BinaryOperator,
             BlockItem::{self},
             Declarator::{self},
             Expression::{self},
@@ -15,7 +15,7 @@ use crate::{
     },
     core::{
         errors::{CompilerError, CompilerErrorKind},
-        typedefs::{Constant, DataType, IntegerType, Type},
+        typedefs::{Constant, DataType, IntegerRank, IntegerType, Type},
     },
 };
 
@@ -432,7 +432,7 @@ impl IrEmitter {
             }
 
             Statement::IfStatement(ifstmt) => {
-                let (condresult, cond_ir) = self.emit_expr(&ifstmt.expression.node, scopes, framebuilder)?;
+                let (condresult, cond_ir) = self.emit_expr(&ifstmt.condition.node, scopes, framebuilder)?;
                 units.extend(cond_ir);
 
                 let (lelse_id, lelse) = self.newlabel();
@@ -455,7 +455,7 @@ impl IrEmitter {
             }
 
             Statement::WhileStatement(whilestmt) => {
-                let (condresult, cond_ir) = self.emit_expr(&whilestmt.expression.node, scopes, framebuilder)?;
+                let (condresult, cond_ir) = self.emit_expr(&whilestmt.condition.node, scopes, framebuilder)?;
 
                 let (lstart_id, lstart) = self.newlabel();
                 let (lend_id, lend) = self.newlabel();
@@ -583,193 +583,6 @@ impl IrEmitter {
         framebuilder: &mut FrameBuilder,
     ) -> Result<(Operand, Vec<IrStatement>), CompilerError> {
         match expr {
-            Expression::UnaryOperator(unaryexpr) => {
-                let (unaryop_result, mut units) = self.emit_expr(&unaryexpr.operand.node, scopes, framebuilder)?;
-
-                let unaryop = match &unaryexpr.operator.node {
-                    // `+x` is a no-op on int; forward the operand as-is.
-                    UnaryOperator::Plus => return Ok((unaryop_result, units)),
-                    UnaryOperator::Minus => UnaryOp::Minus,
-                    UnaryOperator::Complement => UnaryOp::Comp,
-                    UnaryOperator::Negate => UnaryOp::Not,
-
-                    // PostIncrement, PostDecrement, PreIncrement, PreDecrement,
-                    // Address, Indirection
-                    op => {
-                        return Err(CompilerError {
-                            kind: CompilerErrorKind::InternalError,
-                            message: format!("unary operator `{op}` is not supported by IR lowering yet"),
-                            location: Some(unaryexpr.operator.span.start),
-                        })
-                    }
-                };
-
-                let dst = framebuilder.allocate(Type::new(DataType::Int { signed: true }))?;
-                units.push(IrStatement::UnaryOp {
-                    dst: dst.clone(),
-                    op: unaryop,
-                    src: unaryop_result,
-                });
-                return Ok((Operand::Var(dst), units));
-            }
-
-            Expression::BinaryOperator(binaryexpr) => {
-                let (lhs, lhs_ir) = self.emit_expr(&binaryexpr.lhs.node, scopes, framebuilder)?;
-                let (rhs, rhs_ir) = self.emit_expr(&binaryexpr.rhs.node, scopes, framebuilder)?;
-
-                let mut units: Vec<IrStatement>;
-
-                match &binaryexpr.operator.node {
-                    op @ BinaryOperator::Index => {
-                        return Err(CompilerError {
-                            kind: CompilerErrorKind::InternalError,
-                            message: format!("binary operator `{:?}` is not supported by IR lowering yet", op),
-                            location: Some(binaryexpr.operator.span.start),
-                        })
-                    }
-
-                    BinaryOperator::LogicalAnd => {
-                        let dst = framebuilder.allocate(Type::new(DataType::Int { signed: true }))?;
-                        let (lfalseid, lfalse) = self.newlabel();
-                        let (lendid, lend) = self.newlabel();
-
-                        units = lhs_ir;
-
-                        units.push(IrStatement::JmpIfZero {
-                            cond: lhs.clone(),
-                            target: lfalseid,
-                        });
-
-                        units.extend(rhs_ir);
-                        units.push(IrStatement::BinaryOp {
-                            dst: dst.clone(),
-                            op: BinaryOp::NEq,
-                            l: rhs,
-                            r: Operand::Const(0),
-                        });
-                        units.push(IrStatement::Jmp(lendid));
-
-                        units.push(lfalse);
-                        units.push(IrStatement::Copy {
-                            dst: dst.clone(),
-                            src: Operand::Const(0),
-                        });
-
-                        units.push(lend);
-                        return Ok((Operand::Var(dst), units));
-                    }
-
-                    BinaryOperator::LogicalOr => {
-                        let dst = framebuilder.allocate(Type::new(DataType::Int { signed: true }))?;
-                        let (levalrhsid, levalrhs) = self.newlabel();
-                        let (lendid, lend) = self.newlabel();
-
-                        units = lhs_ir;
-
-                        units.push(IrStatement::JmpIfZero {
-                            cond: lhs.clone(),
-                            target: levalrhsid,
-                        });
-
-                        units.push(IrStatement::Copy {
-                            dst: dst.clone(),
-                            src: Operand::Const(1),
-                        });
-
-                        units.push(IrStatement::Jmp(lendid));
-
-                        units.push(levalrhs);
-                        units.extend(rhs_ir);
-                        units.push(IrStatement::BinaryOp {
-                            dst: dst.clone(),
-                            op: BinaryOp::NEq,
-                            l: rhs.clone(),
-                            r: Operand::Const(0),
-                        });
-
-                        units.push(lend);
-                        return Ok((Operand::Var(dst), units));
-                    }
-
-                    BinaryOperator::Assign => {
-                        units = [lhs_ir.as_slice(), rhs_ir.as_slice()].concat();
-
-                        if let Operand::Var(lhs_slot) = &lhs {
-                            units.push(IrStatement::Copy {
-                                dst: lhs_slot.clone(),
-                                src: rhs,
-                            });
-                            return Ok((lhs, units));
-                        } else {
-                            return Err(CompilerError {
-                                kind: CompilerErrorKind::SemanticError,
-                                message: format!("lhs of assign statement must be a lvalue"),
-                                location: Some(binaryexpr.operator.span.start),
-                            });
-                        }
-                    }
-
-                    _ => {
-                        let binaryop = match &binaryexpr.operator.node {
-                            BinaryOperator::Less => BinaryOp::Lt,
-                            BinaryOperator::LessOrEqual => BinaryOp::Le,
-                            BinaryOperator::Greater => BinaryOp::Gt,
-                            BinaryOperator::GreaterOrEqual => BinaryOp::Ge,
-                            BinaryOperator::Equals => BinaryOp::Eq,
-                            BinaryOperator::NotEquals => BinaryOp::NEq,
-                            BinaryOperator::Plus | BinaryOperator::AssignPlus => BinaryOp::Add,
-                            BinaryOperator::Minus | BinaryOperator::AssignMinus => BinaryOp::Sub,
-                            BinaryOperator::Multiply | BinaryOperator::AssignMultiply => BinaryOp::Mul,
-                            BinaryOperator::Divide | BinaryOperator::AssignDivide => BinaryOp::Div,
-                            BinaryOperator::Modulo | BinaryOperator::AssignModulo => BinaryOp::Mod,
-                            BinaryOperator::BitwiseAnd | BinaryOperator::AssignBitwiseAnd => BinaryOp::And,
-                            BinaryOperator::BitwiseOr | BinaryOperator::AssignBitwiseOr => BinaryOp::Or,
-                            BinaryOperator::BitwiseXor | BinaryOperator::AssignBitwiseXor => BinaryOp::Xor,
-                            BinaryOperator::ShiftLeft | BinaryOperator::AssignShiftLeft => BinaryOp::LShift,
-                            BinaryOperator::ShiftRight | BinaryOperator::AssignShiftRight => BinaryOp::RShift,
-
-                            _ => unreachable!(),
-                        };
-
-                        let resultop = if matches!(
-                            &binaryexpr.operator.node,
-                            BinaryOperator::AssignMultiply
-                                | BinaryOperator::AssignDivide
-                                | BinaryOperator::AssignModulo
-                                | BinaryOperator::AssignPlus
-                                | BinaryOperator::AssignMinus
-                                | BinaryOperator::AssignShiftLeft
-                                | BinaryOperator::AssignShiftRight
-                                | BinaryOperator::AssignBitwiseAnd
-                                | BinaryOperator::AssignBitwiseXor
-                                | BinaryOperator::AssignBitwiseOr
-                        ) {
-                            if let Operand::Var(lhs_slot) = &lhs {
-                                lhs_slot.clone()
-                            } else {
-                                return Err(CompilerError {
-                                    kind: CompilerErrorKind::InternalError,
-                                    message: "lhs operand to an assignment expression cannot be a constant".to_string(),
-                                    location: Some(binaryexpr.lhs.span.start),
-                                });
-                            }
-                        } else {
-                            framebuilder.allocate(Type::new(DataType::Int { signed: true }))?
-                        };
-
-                        units = [lhs_ir.as_slice(), rhs_ir.as_slice()].concat();
-                        units.push(IrStatement::BinaryOp {
-                            dst: resultop.clone(),
-                            op: binaryop,
-                            l: lhs,
-                            r: rhs,
-                        });
-
-                        return Ok((Operand::Var(resultop), units));
-                    }
-                }
-            }
-
             Expression::Identifier(identifier) => {
                 let slot = lookup(scopes, identifier).ok_or_else(|| CompilerError {
                     kind: CompilerErrorKind::InternalError,
@@ -810,14 +623,240 @@ impl IrEmitter {
                 }
             },
 
+            Expression::UnaryOperator(unaryexpr) => {
+                let (unaryop_result, mut units) = self.emit_expr(&unaryexpr.operand.node, scopes, framebuilder)?;
+
+                let unaryop = match &unaryexpr.operator.node {
+                    // `+x` is a no-op on int; forward the operand as-is.
+                    UnaryOperator::Plus => return Ok((unaryop_result, units)),
+                    UnaryOperator::Minus => UnaryOp::Minus,
+                    UnaryOperator::Complement => UnaryOp::Comp,
+                    UnaryOperator::Negate => UnaryOp::Not,
+
+                    // PostIncrement, PostDecrement, PreIncrement, PreDecrement,
+                    // Address, Indirection
+                    op => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::InternalError,
+                            message: format!("unary operator `{op}` is not supported by IR lowering yet"),
+                            location: Some(unaryexpr.operator.span.start),
+                        })
+                    }
+                };
+
+                let dst = framebuilder.allocate(Type::new(DataType::new_integer(IntegerRank::Int, true)))?;
+                units.push(IrStatement::UnaryOp {
+                    dst: dst.clone(),
+                    op: unaryop,
+                    src: unaryop_result,
+                });
+                return Ok((Operand::Var(dst), units));
+            }
+
+            Expression::BinaryOperator(binaryexpr) => {
+                let (lhs, lhs_ir) = self.emit_expr(&binaryexpr.lhs.node, scopes, framebuilder)?;
+                let (rhs, rhs_ir) = self.emit_expr(&binaryexpr.rhs.node, scopes, framebuilder)?;
+
+                let mut units: Vec<IrStatement>;
+
+                match &binaryexpr.operator.node {
+                    BinaryOperator::LogicalAnd => {
+                        let dst = framebuilder.allocate(Type::new(DataType::new_integer(IntegerRank::Int, true)))?;
+                        let (lfalseid, lfalse) = self.newlabel();
+                        let (lendid, lend) = self.newlabel();
+
+                        units = lhs_ir;
+
+                        units.push(IrStatement::JmpIfZero {
+                            cond: lhs.clone(),
+                            target: lfalseid,
+                        });
+
+                        units.extend(rhs_ir);
+                        units.push(IrStatement::BinaryOp {
+                            dst: dst.clone(),
+                            op: BinaryOp::NEq,
+                            l: rhs,
+                            r: Operand::Const(0),
+                        });
+                        units.push(IrStatement::Jmp(lendid));
+
+                        units.push(lfalse);
+                        units.push(IrStatement::Copy {
+                            dst: dst.clone(),
+                            src: Operand::Const(0),
+                        });
+
+                        units.push(lend);
+                        return Ok((Operand::Var(dst), units));
+                    }
+
+                    BinaryOperator::LogicalOr => {
+                        let dst = framebuilder.allocate(Type::new(DataType::new_integer(IntegerRank::Int, true)))?;
+                        let (levalrhsid, levalrhs) = self.newlabel();
+                        let (lendid, lend) = self.newlabel();
+
+                        units = lhs_ir;
+
+                        units.push(IrStatement::JmpIfZero {
+                            cond: lhs.clone(),
+                            target: levalrhsid,
+                        });
+
+                        units.push(IrStatement::Copy {
+                            dst: dst.clone(),
+                            src: Operand::Const(1),
+                        });
+
+                        units.push(IrStatement::Jmp(lendid));
+
+                        units.push(levalrhs);
+                        units.extend(rhs_ir);
+                        units.push(IrStatement::BinaryOp {
+                            dst: dst.clone(),
+                            op: BinaryOp::NEq,
+                            l: rhs.clone(),
+                            r: Operand::Const(0),
+                        });
+
+                        units.push(lend);
+                        return Ok((Operand::Var(dst), units));
+                    }
+
+                    binary_operator => {
+                        let binaryop = match *binary_operator {
+                            BinaryOperator::Less => BinaryOp::Lt,
+                            BinaryOperator::LessOrEqual => BinaryOp::Le,
+                            BinaryOperator::Greater => BinaryOp::Gt,
+                            BinaryOperator::GreaterOrEqual => BinaryOp::Ge,
+                            BinaryOperator::Equals => BinaryOp::Eq,
+                            BinaryOperator::NotEquals => BinaryOp::NEq,
+                            BinaryOperator::Plus => BinaryOp::Add,
+                            BinaryOperator::Minus => BinaryOp::Sub,
+                            BinaryOperator::Multiply => BinaryOp::Mul,
+                            BinaryOperator::Divide => BinaryOp::Div,
+                            BinaryOperator::Modulo => BinaryOp::Mod,
+                            BinaryOperator::BitwiseAnd => BinaryOp::And,
+                            BinaryOperator::BitwiseOr => BinaryOp::Or,
+                            BinaryOperator::BitwiseXor => BinaryOp::Xor,
+                            BinaryOperator::ShiftLeft => BinaryOp::LShift,
+                            BinaryOperator::ShiftRight => BinaryOp::RShift,
+
+                            _ => unreachable!(),
+                        };
+
+                        let result_slot_id =
+                            framebuilder.allocate(Type::new(DataType::new_integer(IntegerRank::Int, true)))?;
+
+                        units = [lhs_ir.as_slice(), rhs_ir.as_slice()].concat();
+                        units.push(IrStatement::BinaryOp {
+                            dst: result_slot_id.clone(),
+                            op: binaryop,
+                            l: lhs,
+                            r: rhs,
+                        });
+
+                        return Ok((Operand::Var(result_slot_id), units));
+                    }
+                }
+            }
+
+            Expression::AssignOperator(assign_expr) => {
+                let (lhs, lhs_ir) = self.emit_expr(&assign_expr.lhs.node, scopes, framebuilder)?;
+                let (rhs, rhs_ir) = self.emit_expr(&assign_expr.rhs.node, scopes, framebuilder)?;
+
+                let mut units = [lhs_ir.as_slice(), rhs_ir.as_slice()].concat();
+
+                if let Operand::Var(lhs_slot_id) = &lhs {
+                    match &assign_expr.operator.node {
+                        AssignOperator::Assign => {
+                            units.push(IrStatement::Copy {
+                                dst: lhs_slot_id.clone(),
+                                src: rhs,
+                            });
+                        }
+
+                        compound_assign_op => {
+                            let binaryop = match compound_assign_op {
+                                AssignOperator::Assign => unreachable!(),
+
+                                AssignOperator::AssignPlus => BinaryOp::Add,
+                                AssignOperator::AssignMinus => BinaryOp::Sub,
+                                AssignOperator::AssignMultiply => BinaryOp::Mul,
+                                AssignOperator::AssignDivide => BinaryOp::Div,
+                                AssignOperator::AssignModulo => BinaryOp::Mod,
+                                AssignOperator::AssignBitwiseAnd => BinaryOp::And,
+                                AssignOperator::AssignBitwiseOr => BinaryOp::Or,
+                                AssignOperator::AssignBitwiseXor => BinaryOp::Xor,
+                                AssignOperator::AssignShiftLeft => BinaryOp::LShift,
+                                AssignOperator::AssignShiftRight => BinaryOp::RShift,
+                            };
+
+                            units.push(IrStatement::BinaryOp {
+                                dst: lhs_slot_id.clone(),
+                                op: binaryop,
+                                l: lhs.clone(),
+                                r: rhs,
+                            });
+                        }
+                    }
+                    Ok((lhs, units))
+                } else {
+                    Err(CompilerError {
+                        kind: CompilerErrorKind::SemanticError,
+                        message: format!("lhs of an assignment expression must be an lvalue"),
+                        location: Some(assign_expr.operator.span.start),
+                    })
+                }
+            }
+
+            Expression::TernaryOperator(ternaryopexpr) => {
+                let (condresult, mut units) = self.emit_expr(&ternaryopexpr.condition.node, scopes, framebuilder)?;
+                let ternary_expr_result_slot_id =
+                    framebuilder.allocate(Type::new(DataType::new_integer(IntegerRank::Int, true)))?;
+
+                let (lelse_id, lelse) = self.newlabel();
+
+                units.push(IrStatement::JmpIfZero {
+                    cond: condresult,
+                    target: lelse_id,
+                });
+
+                let (ifresult, if_ir) = self.emit_expr(&ternaryopexpr.if_expr.node, scopes, framebuilder)?;
+                units.extend(if_ir);
+                units.push(IrStatement::Copy {
+                    dst: ternary_expr_result_slot_id.clone(),
+                    src: ifresult,
+                });
+
+                let (lendif_id, lendif) = self.newlabel();
+                units.push(IrStatement::Jmp(lendif_id));
+                units.push(lelse);
+
+                let (else_result, else_ir) = self.emit_expr(&ternaryopexpr.else_expr.node, scopes, framebuilder)?;
+                units.extend(else_ir);
+                units.push(IrStatement::Copy {
+                    dst: ternary_expr_result_slot_id.clone(),
+                    src: else_result,
+                });
+
+                units.push(lendif);
+                return Ok((Operand::Var(ternary_expr_result_slot_id), units));
+            }
+
             Expression::ImplicitCast(cast) => {
                 let (operand, mut units) = self.emit_expr(&cast.expression, scopes, framebuilder)?;
                 match cast.target_type {
                     // int-width integer: representation is unchanged, forward as-is.
-                    DataType::Int { .. } => return Ok((operand, units)),
+                    DataType::Integer {
+                        rank: IntegerRank::Int, ..
+                    } => return Ok((operand, units)),
                     // `(_Bool)x` == `x != 0`; normalizes any int to 0/1.
-                    DataType::Bool => {
-                        let dst = framebuilder.allocate(Type::new(DataType::Bool))?;
+                    DataType::Integer {
+                        rank: IntegerRank::Bool,
+                        ..
+                    } => {
+                        let dst = framebuilder.allocate(Type::new(DataType::new_integer(IntegerRank::Bool, false)))?;
                         units.push(IrStatement::BinaryOp {
                             dst: dst.clone(),
                             op: BinaryOp::NEq,
@@ -860,7 +899,7 @@ impl IrEmitter {
                     args.push(argop);
                 }
 
-                let dst = framebuilder.allocate(Type::new(DataType::Int { signed: true }))?;
+                let dst = framebuilder.allocate(Type::new(DataType::new_integer(IntegerRank::Int, true)))?;
                 units.push(IrStatement::Call {
                     dst: Some(dst.clone()),
                     name: funcname.clone(),

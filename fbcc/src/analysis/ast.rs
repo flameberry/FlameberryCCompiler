@@ -55,7 +55,7 @@ pub enum UnaryOperator {
     /// `&operand`
     Address,
     /// `*operand`
-    Indirection,
+    Dereference,
     /// `+operand`
     Plus,
     /// `-operand`
@@ -66,19 +66,8 @@ pub enum UnaryOperator {
     Negate,
 }
 
-#[derive(Debug)]
-enum BinaryOperatorCategory {
-    Assignment,
-    Comparison,
-    Arithmetic,
-    Logical,
-    Bitwise,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOperator {
-    /// `lhs[rhs]`
-    Index,
     /// `lhs * rhs`
     Multiply,
     /// `lhs / rhs`
@@ -115,6 +104,10 @@ pub enum BinaryOperator {
     LogicalAnd,
     /// `lhs || rhs`
     LogicalOr,
+}
+
+#[derive(Debug, Clone)]
+pub enum AssignOperator {
     /// `lhs = rhs`
     Assign,
     /// `lhs *= rhs`
@@ -139,6 +132,27 @@ pub enum BinaryOperator {
     AssignBitwiseOr,
 }
 
+impl AssignOperator {
+    pub fn underlying_binary_op(&self) -> Option<BinaryOperator> {
+        match self {
+            Self::Assign => None,
+            compound_assign_op => Some(match compound_assign_op {
+                Self::AssignMultiply => BinaryOperator::Multiply,
+                Self::AssignDivide => BinaryOperator::Divide,
+                Self::AssignModulo => BinaryOperator::Modulo,
+                Self::AssignPlus => BinaryOperator::Plus,
+                Self::AssignMinus => BinaryOperator::Minus,
+                Self::AssignShiftLeft => BinaryOperator::ShiftLeft,
+                Self::AssignShiftRight => BinaryOperator::ShiftRight,
+                Self::AssignBitwiseAnd => BinaryOperator::BitwiseAnd,
+                Self::AssignBitwiseXor => BinaryOperator::BitwiseXor,
+                Self::AssignBitwiseOr => BinaryOperator::BitwiseOr,
+                _ => unreachable!(),
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum MemberOperator {
     /// operator.
@@ -161,10 +175,25 @@ pub struct BinaryOperatorExpression {
 }
 
 #[derive(Debug, Clone)]
+pub struct AssignOperatorExpression {
+    pub operator: Node<AssignOperator>,
+    pub lhs: Node<Expression>,
+    pub rhs: Node<Expression>,
+    pub uac_type: Option<Type>,
+    pub should_cast: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct TernaryOperatorExpression {
     pub condition: Node<Expression>,
     pub if_expr: Node<Expression>,
     pub else_expr: Node<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArraySubscriptExpression {
+    pub array: Node<Expression>,
+    pub subscript: Node<Expression>,
 }
 
 #[derive(Debug, Clone)]
@@ -202,7 +231,9 @@ pub enum Expression {
     StringLiteral(String),
     UnaryOperator(Box<UnaryOperatorExpression>),
     BinaryOperator(Box<BinaryOperatorExpression>),
+    AssignOperator(Box<AssignOperatorExpression>),
     TernaryOperator(Box<TernaryOperatorExpression>),
+    ArraySubscript(Box<ArraySubscriptExpression>),
     SizeofType(Box<Node<TypeName>>),
     SizeofVal(Box<Node<Expression>>),
     Alignof(Box<Node<TypeName>>),
@@ -285,7 +316,7 @@ pub enum BlockItem {
 
 #[derive(Debug)]
 pub struct IfStatement {
-    pub expression: Node<Expression>,
+    pub condition: Node<Expression>,
     pub if_block: Node<Statement>,
     pub else_block: Option<Node<Statement>>,
 }
@@ -298,7 +329,7 @@ pub struct SwitchStatement {
 
 #[derive(Debug)]
 pub struct WhileStatement {
-    pub expression: Node<Expression>,
+    pub condition: Node<Expression>,
     pub statement: Node<Statement>,
 }
 
@@ -390,7 +421,7 @@ impl fmt::Display for UnaryOperator {
             UnaryOperator::PostIncrement | UnaryOperator::PreIncrement => "++",
             UnaryOperator::PostDecrement | UnaryOperator::PreDecrement => "--",
             UnaryOperator::Address => "&",
-            UnaryOperator::Indirection => "*",
+            UnaryOperator::Dereference => "*",
             UnaryOperator::Plus => "+",
             UnaryOperator::Minus => "-",
             UnaryOperator::Complement => "~",
@@ -519,6 +550,24 @@ pub fn display_expr(expression: &Expression, span: &Span) {
                 display_expr(&binaryexpr.rhs.node, &binaryexpr.rhs.span);
             }
         }
+        Expression::AssignOperator(assignexpr) => {
+            add_branch!("AssignOperatorExpression {}", span);
+            {
+                add_branch!(
+                    "Operator -> {:?} {}",
+                    assignexpr.operator.node,
+                    assignexpr.operator.span
+                );
+            }
+            {
+                add_branch!("LHS");
+                display_expr(&assignexpr.lhs.node, &assignexpr.lhs.span);
+            }
+            {
+                add_branch!("RHS");
+                display_expr(&assignexpr.rhs.node, &assignexpr.rhs.span);
+            }
+        }
         Expression::TernaryOperator(ternaryexpr) => {
             add_branch!("TernaryOperatorExpression {}", span);
             {
@@ -532,6 +581,17 @@ pub fn display_expr(expression: &Expression, span: &Span) {
             {
                 add_branch!("ElseExpression");
                 display_expr(&ternaryexpr.else_expr.node, &ternaryexpr.else_expr.span);
+            }
+        }
+        Expression::ArraySubscript(subscriptexpr) => {
+            add_branch!("ArraySubscriptExpression {}", span);
+            {
+                add_branch!("Array");
+                display_expr(&subscriptexpr.array.node, &subscriptexpr.array.span);
+            }
+            {
+                add_branch!("Subscript");
+                display_expr(&subscriptexpr.subscript.node, &subscriptexpr.subscript.span);
             }
         }
         Expression::SizeofType(type_name) => {
@@ -686,7 +746,7 @@ pub fn display_statement(statement: &Statement, span: &Span) {
             add_branch!("IfStatement {}", span);
             {
                 add_branch!("IfExpression");
-                display_expr(&if_statement.expression.node, &if_statement.expression.span);
+                display_expr(&if_statement.condition.node, &if_statement.condition.span);
             }
             {
                 add_branch!("ThenStatement");
@@ -712,7 +772,7 @@ pub fn display_statement(statement: &Statement, span: &Span) {
             add_branch!("WhileStatement {}", span);
             {
                 add_branch!("WhileExpression");
-                display_expr(&while_stmt.expression.node, &while_stmt.expression.span);
+                display_expr(&while_stmt.condition.node, &while_stmt.condition.span);
             }
             {
                 add_branch!("WhileBlock");
@@ -727,7 +787,7 @@ pub fn display_statement(statement: &Statement, span: &Span) {
             }
             {
                 add_branch!("DoWhileExpression");
-                display_expr(&statement.expression.node, &statement.expression.span);
+                display_expr(&statement.condition.node, &statement.condition.span);
             }
         }
         Statement::ForStatement(statement) => {

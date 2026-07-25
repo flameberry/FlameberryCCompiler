@@ -1,29 +1,28 @@
 use std::iter::zip;
 
 use crate::analysis::{ast::*, node::Span};
-use crate::core::errors::{CompilerError, CompilerErrorKind};
+use crate::core::errors::{CompilerError, CompilerErrorKind, Diagnostic, VecExtensionDiagnosticHelpers};
 use crate::core::symboltable::{SymbolDefinition, SymbolTable};
-use crate::core::typedefs::{DataType, Type, TypeCompatibility, TypeQualifiers};
+use crate::core::typedefs::{AssignmentConversionResult, DataType, IntegerRank, Type, TypeQualifiers};
 
 use super::node::Node;
-
-// TODOS: Store the scope ID somewhere in the AST probably
-// ...to ensure that every time we need to find a symbol from the AST we can lookup using the scope ID
 
 pub struct SemanticAnalyzer<'a> {
     symboltableref: &'a mut SymbolTable,
     scopeidstack: Vec<u32>,
     counter: u32,
     num_loops_or_switches: u32,
+    diagnostics: &'a mut Vec<Diagnostic>,
 }
 
 impl<'a> SemanticAnalyzer<'a> {
-    pub fn new(symboltableref: &'a mut SymbolTable) -> Self {
+    pub fn new(symboltableref: &'a mut SymbolTable, diagnostics: &'a mut Vec<Diagnostic>) -> Self {
         Self {
             symboltableref,
             scopeidstack: vec![0], // 0 represents global scope
             counter: 1,
             num_loops_or_switches: 0,
+            diagnostics,
         }
     }
 
@@ -155,32 +154,19 @@ impl<'a> SemanticAnalyzer<'a> {
 
                 self.pop_scope();
             }
+
             Statement::ReturnStatement(return_stmt) => {
                 // Check if return type is same as the expected_return_type, if not check if it's castable
                 let return_type = self.validate_expr(&mut return_stmt.node, &return_stmt.span)?;
 
-                match Type::compare(&return_type, expected_return_type) {
-                    TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
+                match Type::check_assignment_conversion(expected_return_type, &return_type)? {
+                    AssignmentConversionResult::Identical => {}
+                    result => {
+                        Self::implicit_cast(return_stmt, &expected_return_type.datatype);
 
-                    TypeCompatibility::ImplicitConversion { .. } => {
-                        // Insert an implicit cast with target expected_return_type
-                        let temp_expr = std::mem::replace(&mut return_stmt.node, Expression::Empty);
-
-                        return_stmt.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                            expression: temp_expr,
-                            target_type: expected_return_type.datatype.clone(),
-                        }));
-                    }
-
-                    TypeCompatibility::Incompatible => {
-                        return Err(CompilerError {
-                            kind: CompilerErrorKind::SemanticError,
-                            message: format!(
-                                "Expected return type: {}, instead got {}.",
-                                expected_return_type, return_type
-                            ),
-                            location: Some(return_stmt.span.start),
-                        })
+                        if let AssignmentConversionResult::CastWithWarning(warning) = result {
+                            self.diagnostics.warning(warning, Some(return_stmt.span));
+                        }
                     }
                 }
             }
@@ -220,28 +206,14 @@ impl<'a> SemanticAnalyzer<'a> {
                 if let Some(condition) = &mut for_stmt.condition {
                     let condition_type = self.validate_expr(&mut condition.node, &condition.span)?;
 
-                    match Type::compare(&condition_type, &Type::new(DataType::Bool)) {
-                        TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
-
-                        TypeCompatibility::ImplicitConversion { .. } => {
-                            // Add an implicit cast with target boolean type
-                            let temp_expr = for_stmt.condition.take().unwrap();
-
-                            for_stmt.condition = Some(Node::new(
-                                Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                                    expression: temp_expr.node,
-                                    target_type: DataType::Bool,
-                                })),
-                                temp_expr.span,
-                            ));
-                        }
-                        TypeCompatibility::Incompatible => {
-                            return Err(CompilerError {
-                                kind: CompilerErrorKind::SemanticError,
-                                message: format!("Expected boolean expression, instead got {}", condition_type),
-                                location: Some(condition.span.start),
-                            })
-                        }
+                    if Type::is_boolean_compatible(&condition_type) {
+                        Self::implicit_cast_to_bool(condition, &condition_type);
+                    } else {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SemanticError,
+                            message: format!("Expected boolean expression, instead got {}", condition_type),
+                            location: Some(condition.span.start),
+                        });
                     }
                 }
 
@@ -262,28 +234,16 @@ impl<'a> SemanticAnalyzer<'a> {
 
             Statement::WhileStatement(while_stmt) | Statement::DoWhileStatement(while_stmt) => {
                 // 1. Evaluate condition and check if the type can evaluate into a boolean
-                let condition_type =
-                    self.validate_expr(&mut while_stmt.expression.node, &while_stmt.expression.span)?;
+                let condition_type = self.validate_expr(&mut while_stmt.condition.node, &while_stmt.condition.span)?;
 
-                match Type::compare(&condition_type, &Type::new(DataType::Bool)) {
-                    TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
-
-                    TypeCompatibility::ImplicitConversion { .. } => {
-                        // Add an implicit cast with target boolean type
-                        let temp_expr = std::mem::replace(&mut while_stmt.expression.node, Expression::Empty);
-
-                        while_stmt.expression.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                            expression: temp_expr,
-                            target_type: DataType::Bool,
-                        }));
-                    }
-                    TypeCompatibility::Incompatible => {
-                        return Err(CompilerError {
-                            kind: CompilerErrorKind::SemanticError,
-                            message: format!("Expected boolean expression, instead got {}", condition_type),
-                            location: Some(while_stmt.expression.span.start),
-                        })
-                    }
+                if Type::is_boolean_compatible(&condition_type) {
+                    Self::implicit_cast_to_bool(&mut while_stmt.condition, &condition_type);
+                } else {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SemanticError,
+                        message: format!("Expected boolean expression, instead got {}", condition_type),
+                        location: Some(while_stmt.condition.span.start),
+                    });
                 }
 
                 self.num_loops_or_switches += 1;
@@ -294,27 +254,16 @@ impl<'a> SemanticAnalyzer<'a> {
 
             Statement::IfStatement(if_stmt) => {
                 // 1. Evaluate condition and check if the type can evaluate into a boolean
-                let condition_type = self.validate_expr(&mut if_stmt.expression.node, &if_stmt.expression.span)?;
+                let condition_type = self.validate_expr(&mut if_stmt.condition.node, &if_stmt.condition.span)?;
 
-                match Type::compare(&condition_type, &Type::new(DataType::Bool)) {
-                    TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
-
-                    TypeCompatibility::ImplicitConversion { .. } => {
-                        // Add an implicit cast with target boolean type
-                        let temp_expr = std::mem::replace(&mut if_stmt.expression.node, Expression::Empty);
-
-                        if_stmt.expression.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                            expression: temp_expr,
-                            target_type: DataType::Bool,
-                        }));
-                    }
-                    TypeCompatibility::Incompatible => {
-                        return Err(CompilerError {
-                            kind: CompilerErrorKind::SemanticError,
-                            message: format!("Expected boolean expression, instead got {}", condition_type),
-                            location: Some(if_stmt.expression.span.start),
-                        })
-                    }
+                if Type::is_boolean_compatible(&condition_type) {
+                    Self::implicit_cast_to_bool(&mut if_stmt.condition, &condition_type);
+                } else {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SemanticError,
+                        message: format!("Expected boolean expression, instead got {}", condition_type),
+                        location: Some(if_stmt.condition.span.start),
+                    });
                 }
 
                 // 2. Evaluate the if-statement body
@@ -365,17 +314,10 @@ impl<'a> SemanticAnalyzer<'a> {
                         let rhs_typeinfo = self.validate_expr(asgn_expr, &init_node.span)?;
 
                         // 2. Check if the expression type is compatible with the declaration type
-                        match Type::compare(&declaration_type, &rhs_typeinfo) {
-                            TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
+                        match Type::check_assignment_conversion(&declaration_type, &rhs_typeinfo)? {
+                            AssignmentConversionResult::Identical => {}
 
-                            TypeCompatibility::ImplicitConversion { .. } => {
-                                // Note: Here is a logical mistake i.e., instead of checking that
-                                // the two types, declaration_type and initializer_expression_type
-                                // are compatible directly, i.e., rhs is convertible to lhs
-                                // directly and not a common higher precision data type, we assume
-                                // just because there is an implicit conversion possible that they
-                                // are compatible.
-
+                            result => {
                                 // 1. Extracting expression from the existing initializer enum
                                 let Initializer::AssignmentExpression(temp_expr) = std::mem::replace(
                                     &mut init_node.node,
@@ -389,14 +331,10 @@ impl<'a> SemanticAnalyzer<'a> {
                                         expression: temp_expr,
                                     },
                                 )));
-                            }
 
-                            TypeCompatibility::Incompatible => {
-                                return Err(CompilerError {
-                                    kind: CompilerErrorKind::SemanticError,
-                                    message: "Assigning an incompatible type during declaration".to_string(),
-                                    location: Some(init_node.span.start),
-                                })
+                                if let AssignmentConversionResult::CastWithWarning(warning) = result {
+                                    self.diagnostics.warning(warning, Some(init_node.span));
+                                }
                             }
                         }
                     }
@@ -422,7 +360,7 @@ impl<'a> SemanticAnalyzer<'a> {
         Ok(())
     }
 
-    fn validate_expr(&self, expression: &mut Expression, span: &Span) -> Result<Type, CompilerError> {
+    fn validate_expr(&mut self, expression: &mut Expression, span: &Span) -> Result<Type, CompilerError> {
         // Tasks to be performed:
         // 1. Check whether any variables used in expression are defined in the symbol table
         // 2. Check whether the type of the variables is compatible with each other
@@ -432,216 +370,6 @@ impl<'a> SemanticAnalyzer<'a> {
         //      b. Or if it is a constant then convert it immediately
 
         match expression {
-            Expression::UnaryOperator(unary_expr) => {
-                let operand_type = self.validate_expr(&mut unary_expr.operand.node, &unary_expr.operand.span)?;
-                match &unary_expr.operator.node {
-                    UnaryOperator::Minus | UnaryOperator::Plus | UnaryOperator::Complement | UnaryOperator::Negate => {
-                        if !operand_type.datatype.is_integer_type() {
-                            return Err(CompilerError {
-                                kind: CompilerErrorKind::SemanticError,
-                                message: format!(
-                                    "unary operator {} is only supported on integer types for now",
-                                    unary_expr.operator.node
-                                ),
-                                location: Some(unary_expr.operator.span.start),
-                            });
-                        }
-
-                        if matches!(&unary_expr.operator.node, UnaryOperator::Negate) {
-                            return Ok(Type {
-                                datatype: DataType::Int { signed: true },
-                                qualifiers: operand_type.qualifiers,
-                            });
-                        } else {
-                            return Ok(operand_type);
-                        }
-                    }
-                    op => {
-                        return Err(CompilerError {
-                            kind: CompilerErrorKind::SemanticError,
-                            message: format!("unary operator {} is not supported yet", op),
-                            location: Some(unary_expr.operator.span.start),
-                        })
-                    }
-                }
-            }
-
-            Expression::BinaryOperator(binary_expr) => {
-                // 1. Evaluate LHS and RHS type
-                let lhs_typeinfo = self.validate_expr(&mut binary_expr.lhs.node, &binary_expr.lhs.span)?;
-                let rhs_typeinfo = self.validate_expr(&mut binary_expr.rhs.node, &binary_expr.rhs.span)?;
-                let composite_type: DataType;
-
-                // 2. Get Common Type between the operands
-                match Type::compare(&lhs_typeinfo, &rhs_typeinfo) {
-                    TypeCompatibility::Identical => {
-                        composite_type = lhs_typeinfo.datatype.clone();
-                    }
-
-                    TypeCompatibility::ImplicitConversion { datatype: dtype } => {
-                        if Self::is_assignment_operator(&binary_expr.operator.node) {
-                            // Here the operator is an assignment operator, so we have to cast the
-                            // rhs expression to the type of the lhs expression
-
-                            // 1. Confirm that LHS expression is a modifiable lvalue
-                            // ... For example: *ptr.member = 10;
-                            //                  ^^ this expression can be a modifiable lvalue
-                            if !self.is_modifiable_lvalue(&binary_expr.lhs.node) {
-                                return Err(CompilerError {
-                                    kind: CompilerErrorKind::SemanticError,
-                                    message: "LHS must be a Modifiable LValue".to_string(),
-                                    location: Some(binary_expr.lhs.span.start),
-                                });
-                            }
-
-                            // 2. Cast rhs expression to the type of lhs expression
-                            let rhs_expr = binary_expr.rhs.clone();
-
-                            binary_expr.rhs.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                                target_type: lhs_typeinfo.datatype.clone(),
-                                expression: rhs_expr.node,
-                            }));
-
-                            // 3. Set the composite type
-                            composite_type = lhs_typeinfo.datatype.clone();
-                        } else {
-                            // Here, the operator is not an assignment operator, so we need to cast
-                            // both lhs and rhs accordingly.
-
-                            // 1. Cast LHS expression if it's not of the required type (according
-                            //    to the C type promotion rules)
-                            if lhs_typeinfo.datatype != dtype {
-                                let lhs_expr = binary_expr.lhs.clone();
-
-                                binary_expr.lhs.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                                    target_type: dtype.clone(),
-                                    expression: lhs_expr.node,
-                                }));
-                            }
-
-                            // 2. Cast RHS expression if it's not of the required type (according
-                            //    to the C type promotion rules)
-                            if rhs_typeinfo.datatype != dtype {
-                                let rhs_expr = binary_expr.rhs.clone();
-
-                                binary_expr.rhs.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                                    target_type: dtype.clone(),
-                                    expression: rhs_expr.node,
-                                }));
-                            }
-
-                            // 3. Set the composite type
-                            composite_type = dtype;
-                        }
-                    }
-
-                    TypeCompatibility::Incompatible => {
-                        return Err(CompilerError {
-                            kind: CompilerErrorKind::SemanticError,
-                            message: format!(
-                                "Incompatible Types provided to binary expression: {:?} => {} and {}",
-                                binary_expr.operator.node, lhs_typeinfo, rhs_typeinfo
-                            ),
-                            location: Some(binary_expr.operator.span.start),
-                        })
-                    }
-                    _ => todo!(),
-                }
-
-                // 3. Check if the composite type is compatible with the type of operator used
-                if !Self::is_operand_type_compatible_with_operator(&composite_type, &binary_expr.operator.node) {
-                    return Err(CompilerError {
-                        kind: CompilerErrorKind::SemanticError,
-                        message: format!(
-                            "Incompatible operand ({}) usage with operator ({:?})",
-                            composite_type, binary_expr.operator.node
-                        ),
-                        location: Some(binary_expr.operator.span.start),
-                    });
-                }
-
-                // Finally return the evaluated type of the expression
-                // Note: Missing proper handling of qualifiers
-                Ok(Type {
-                    datatype: composite_type,
-                    qualifiers: lhs_typeinfo.qualifiers,
-                })
-            }
-
-            Expression::Call(call_expr) => {
-                // Get the function signature
-                let callee_type = self.validate_expr(&mut call_expr.callee.node, span)?;
-
-                if let Type {
-                    datatype:
-                        DataType::Function {
-                            return_type,
-                            parameters,
-                        },
-                    qualifiers: _,
-                } = &callee_type
-                {
-                    for (param, arg) in zip(parameters, call_expr.argument_expr_list.iter_mut()) {
-                        // 1. Evaluate argument expression type
-                        let arg_type = self.validate_expr(&mut arg.node, &arg.span)?;
-
-                        // 2. Compare the parameter type and argument type, and add an implicit
-                        //    cast if necessary
-                        match Type::compare(param, &arg_type) {
-                            TypeCompatibility::Identical | TypeCompatibility::Compatible => {}
-
-                            TypeCompatibility::ImplicitConversion { .. } => {
-                                let temp_expr = std::mem::replace(&mut arg.node, Expression::Empty);
-
-                                arg.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
-                                    expression: temp_expr,
-                                    target_type: param.datatype.clone(),
-                                }));
-                            }
-
-                            TypeCompatibility::Incompatible => {
-                                return Err(CompilerError {
-                                    kind: CompilerErrorKind::SemanticError,
-                                    message: format!("Expected argument of type: {}, instead got {}", param, arg_type),
-                                    location: Some(arg.span.start),
-                                })
-                            }
-                        }
-                    }
-                    Ok(return_type.as_ref().clone())
-                } else {
-                    Err(CompilerError {
-                        kind: CompilerErrorKind::SemanticError,
-                        message: format!("Called object type {} is not a function.", callee_type),
-                        location: Some(call_expr.callee.span.start),
-                    })
-                }
-            }
-
-            Expression::Comma(comma_exprs) => {
-                assert!(!comma_exprs.is_empty(), "Comma Expression vector can't be empty");
-
-                let mut first = true;
-                let mut typeinfo = Type {
-                    datatype: DataType::Void,
-                    qualifiers: TypeQualifiers::default(),
-                };
-
-                // In case of initializer expressions, we should check whether all comma
-                // expressions are of the same type or not, but in case of generic expressions like
-                // 4 + 5, false;
-                // Above is a valid statement
-                for comma_expr in comma_exprs.iter_mut() {
-                    if first {
-                        typeinfo = self.validate_expr(&mut comma_expr.node, &comma_expr.span)?;
-                        first = false;
-                    }
-                }
-
-                // For now this function returns the first comma expression's evaluated type
-                Ok(typeinfo)
-            }
-
             Expression::Identifier(idname) => {
                 // Tasks to be performed:
                 // 1. Check if idname is a valid symbol in the symboltable
@@ -662,14 +390,284 @@ impl<'a> SemanticAnalyzer<'a> {
             Expression::Constant(constant) => Ok(Type::from_constant(constant)),
 
             Expression::StringLiteral(literal) => Ok(Type::new(DataType::Array {
-                element_type: Box::new(Type::new(DataType::Char { signed: true })),
+                element_type: Box::new(Type::new(DataType::new_integer(IntegerRank::Char, true))),
                 size: Some(literal.len() + 1),
             })),
+
+            Expression::UnaryOperator(unary_expr) => {
+                // TODO: Big rewrite required
+                let operand_type = self.validate_expr(&mut unary_expr.operand.node, &unary_expr.operand.span)?;
+                match &unary_expr.operator.node {
+                    UnaryOperator::Minus | UnaryOperator::Plus | UnaryOperator::Complement | UnaryOperator::Negate => {
+                        if !operand_type.datatype.is_integer() {
+                            return Err(CompilerError {
+                                kind: CompilerErrorKind::SemanticError,
+                                message: format!(
+                                    "unary operator {} is only supported on integer types for now",
+                                    unary_expr.operator.node
+                                ),
+                                location: Some(unary_expr.operator.span.start),
+                            });
+                        }
+
+                        if matches!(&unary_expr.operator.node, UnaryOperator::Negate) {
+                            return Ok(Type {
+                                datatype: DataType::new_integer(IntegerRank::Int, true),
+                                qualifiers: operand_type.qualifiers,
+                            });
+                        } else {
+                            return Ok(operand_type);
+                        }
+                    }
+                    op => {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SemanticError,
+                            message: format!("unary operator {} is not supported yet", op),
+                            location: Some(unary_expr.operator.span.start),
+                        })
+                    }
+                }
+            }
+
+            Expression::BinaryOperator(binary_expr) => {
+                // 1. evaluate lhs and rhs expression types
+                let lhs_typeinfo = self.validate_expr(&mut binary_expr.lhs.node, &binary_expr.lhs.span)?;
+                let rhs_typeinfo = self.validate_expr(&mut binary_expr.rhs.node, &binary_expr.rhs.span)?;
+
+                // 2. usual arithmetic conversions
+                let uac_datatype = Type::common_datatype_for_uac(&lhs_typeinfo, &rhs_typeinfo)?;
+
+                if uac_datatype != lhs_typeinfo.datatype {
+                    Self::implicit_cast(&mut binary_expr.lhs, &uac_datatype);
+                }
+
+                if uac_datatype != rhs_typeinfo.datatype {
+                    Self::implicit_cast(&mut binary_expr.rhs, &uac_datatype);
+                }
+
+                // 3. check if the composite type is compatible with the type of operator used
+                if !Self::is_operand_type_compatible_with_operator(&uac_datatype, &binary_expr.operator.node) {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::SemanticError,
+                        message: format!(
+                            "Incompatible operand ({}) usage with operator ({:?})",
+                            uac_datatype, binary_expr.operator.node
+                        ),
+                        location: Some(binary_expr.operator.span.start),
+                    });
+                }
+
+                // 4. return evaluated type and drop qualifiers as binary expression is always an rvalue
+                Ok(Type::new(uac_datatype))
+            }
+
+            Expression::AssignOperator(assign_expr) => {
+                // 1. evaluate lhs and rhs expression types
+                let lhs_type = self.validate_expr(&mut assign_expr.lhs.node, &assign_expr.lhs.span)?;
+                let rhs_typeinfo = self.validate_expr(&mut assign_expr.rhs.node, &assign_expr.rhs.span)?;
+
+                let final_rhs_type: Type;
+
+                if let Some(underlying_binary_op) = assign_expr.operator.node.underlying_binary_op() {
+                    // 2. usual arithmetic conversions
+                    let uac_datatype = Type::common_datatype_for_uac(&lhs_type, &rhs_typeinfo)?;
+
+                    if uac_datatype != rhs_typeinfo.datatype {
+                        Self::implicit_cast(&mut assign_expr.rhs, &uac_datatype);
+                    }
+
+                    // 3. check if the composite type is compatible with the type of operator used
+                    if !Self::is_operand_type_compatible_with_operator(&uac_datatype, &underlying_binary_op) {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SemanticError,
+                            message: format!(
+                                "Incompatible operand ({}) usage with operator ({:?})",
+                                uac_datatype, assign_expr.operator.node
+                            ),
+                            location: Some(assign_expr.operator.span.start),
+                        });
+                    }
+
+                    final_rhs_type = Type::new(uac_datatype);
+                    assign_expr.uac_type = Some(final_rhs_type.clone());
+                } else {
+                    final_rhs_type = rhs_typeinfo.clone();
+                }
+
+                // 4. now check assignment conversion
+                match Type::check_assignment_conversion(&lhs_type, &final_rhs_type)? {
+                    AssignmentConversionResult::Identical => {}
+                    result => {
+                        assign_expr.should_cast = true;
+
+                        if let AssignmentConversionResult::CastWithWarning(warning) = result {
+                            self.diagnostics.warning(warning, Some(assign_expr.operator.span));
+                        }
+                    }
+                }
+
+                // 5. return evaluated type and drop qualifiers as binary expression is always an rvalue
+                Ok(Type::new(lhs_type.datatype))
+            }
+
+            Expression::TernaryOperator(ternary_expr) => {
+                // 1. evaluate type of the condition expression
+                let condition_type =
+                    self.validate_expr(&mut ternary_expr.condition.node, &ternary_expr.condition.span)?;
+
+                // 2. check if condition expression type is boolean compatible
+                if Type::is_boolean_compatible(&condition_type) {
+                    // 3. cast to bool if not already
+                    Self::implicit_cast_to_bool(&mut ternary_expr.condition, &condition_type);
+
+                    // 4. evaluate types of if expression and else expression
+                    let if_type = self.validate_expr(&mut ternary_expr.if_expr.node, &ternary_expr.if_expr.span)?;
+                    let else_type =
+                        self.validate_expr(&mut ternary_expr.else_expr.node, &ternary_expr.else_expr.span)?;
+
+                    // 5. if if_type and else_type are arithmetic then perform uac
+                    if if_type.datatype.is_arithmetic() && else_type.datatype.is_arithmetic() {
+                        let uac_datatype = Type::common_datatype_for_uac(&if_type, &else_type)?;
+
+                        if uac_datatype != if_type.datatype {
+                            Self::implicit_cast(&mut ternary_expr.if_expr, &uac_datatype);
+                        }
+
+                        if uac_datatype != else_type.datatype {
+                            Self::implicit_cast(&mut ternary_expr.else_expr, &uac_datatype);
+                        }
+
+                        Ok(Type::new(uac_datatype))
+                    } else {
+                        Err(CompilerError {
+                            kind: CompilerErrorKind::InternalError,
+                            message: format!(
+                                "cannot check compatibility for types ({}, {}) in ternary operator expression yet",
+                                if_type, else_type
+                            ),
+                            location: Some(span.start),
+                        })
+                    }
+                } else {
+                    Err(CompilerError {
+                        kind: CompilerErrorKind::SemanticError,
+                        message: "condition expression in a ternary expression must be boolean compatible".to_string(),
+                        location: Some(ternary_expr.condition.span.start),
+                    })
+                }
+            }
+
+            Expression::Call(call_expr) => {
+                // Get the function signature
+                let callee_type = self.validate_expr(&mut call_expr.callee.node, span)?;
+
+                if let Type {
+                    datatype:
+                        DataType::Function {
+                            return_type,
+                            parameters,
+                        },
+                    qualifiers: _,
+                } = &callee_type
+                {
+                    // ensure number of args = number of parameters
+                    if call_expr.argument_expr_list.len() != parameters.len() {
+                        return Err(CompilerError {
+                            kind: CompilerErrorKind::SemanticError,
+                            message: format!(
+                                "expected {} args to function instead got {}",
+                                parameters.len(),
+                                call_expr.argument_expr_list.len()
+                            ),
+                            location: Some(span.start),
+                        });
+                    }
+
+                    for (param, arg) in zip(parameters, call_expr.argument_expr_list.iter_mut()) {
+                        // 1. evaluate argument expression type
+                        let arg_type = self.validate_expr(&mut arg.node, &arg.span)?;
+
+                        // 2. check whether arg type is assignable to param type and add an implicit cast if necessary
+                        match Type::check_assignment_conversion(param, &arg_type)? {
+                            AssignmentConversionResult::Identical => {}
+                            result => {
+                                Self::implicit_cast(arg, &param.datatype);
+
+                                if let AssignmentConversionResult::CastWithWarning(warning) = result {
+                                    self.diagnostics.warning(warning, Some(arg.span));
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. return type of the function is the expression type
+                    Ok(return_type.as_ref().clone())
+                } else {
+                    Err(CompilerError {
+                        kind: CompilerErrorKind::SemanticError,
+                        message: format!("Called object type {} is not a function.", callee_type),
+                        location: Some(call_expr.callee.span.start),
+                    })
+                }
+            }
+
+            Expression::Comma(comma_exprs) => {
+                if comma_exprs.is_empty() {
+                    return Err(CompilerError {
+                        kind: CompilerErrorKind::InternalError,
+                        message: "Comma Expression vector can't be empty".to_string(),
+                        location: Some(span.start),
+                    });
+                }
+
+                // stores evaluated type of last expression
+                let mut ty = Type {
+                    datatype: DataType::Void,
+                    qualifiers: TypeQualifiers::default(),
+                };
+
+                // In case of initializer expressions, we should check whether all comma
+                // expressions are of the same type or not, but in case of generic expressions like
+                // 4 + 5, false;
+                // Above is a valid statement
+                for comma_expr in comma_exprs.iter_mut() {
+                    ty = self.validate_expr(&mut comma_expr.node, &comma_expr.span)?;
+                }
+
+                Ok(ty)
+            }
 
             _ => {
                 println!("SemanticAnalyzer::validate_expr not implemented for {:?}", expression);
                 todo!()
             }
+        }
+    }
+
+    fn implicit_cast(expr_node: &mut Node<Expression>, datatype: &DataType) {
+        let temp_expr = std::mem::replace(&mut expr_node.node, Expression::Empty);
+
+        expr_node.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
+            expression: temp_expr,
+            target_type: datatype.clone(),
+        }));
+    }
+
+    /// Casts to bool only if the expression type is not bool
+    fn implicit_cast_to_bool(expr_node: &mut Node<Expression>, expr_type: &Type) {
+        if !matches!(
+            expr_type.datatype,
+            DataType::Integer {
+                rank: IntegerRank::Bool,
+                signed: _
+            }
+        ) {
+            let temp_expr = std::mem::replace(&mut expr_node.node, Expression::Empty);
+
+            expr_node.node = Expression::ImplicitCast(Box::new(ImplicitCastExpression {
+                expression: temp_expr,
+                target_type: DataType::new_integer(IntegerRank::Bool, false),
+            }));
         }
     }
 
@@ -696,74 +694,26 @@ impl<'a> SemanticAnalyzer<'a> {
 
     /// Returns the operand type that is expected for the given binary operator
     fn is_operand_type_compatible_with_operator(operand_type: &DataType, operator: &BinaryOperator) -> bool {
-        match (operator, operand_type) {
-            // Arithmetic operators: +, -, *, /, %
-            (
-                BinaryOperator::Plus | BinaryOperator::Minus | BinaryOperator::Multiply | BinaryOperator::Divide,
-                DataType::Int { .. }
-                | DataType::Short { .. }
-                | DataType::Long { .. }
-                | DataType::Float
-                | DataType::Double,
-            ) => true,
+        match operator {
+            BinaryOperator::Plus | BinaryOperator::Minus | BinaryOperator::Multiply | BinaryOperator::Divide => {
+                operand_type.is_arithmetic()
+            }
 
-            (BinaryOperator::Modulo, DataType::Int { .. } | DataType::Short { .. } | DataType::Long { .. }) => true, // % only works with integral types
+            BinaryOperator::Modulo
+            | BinaryOperator::BitwiseAnd
+            | BinaryOperator::BitwiseOr
+            | BinaryOperator::BitwiseXor
+            | BinaryOperator::ShiftLeft
+            | BinaryOperator::ShiftRight => operand_type.is_integer(),
 
-            // Bitwise operators: &, |, ^, <<, >>
-            (
-                BinaryOperator::BitwiseAnd
-                | BinaryOperator::BitwiseOr
-                | BinaryOperator::BitwiseXor
-                | BinaryOperator::ShiftLeft
-                | BinaryOperator::ShiftRight,
-                DataType::Int { .. } | DataType::Short { .. } | DataType::Long { .. } | DataType::Char { .. },
-            ) => true,
-
-            // Comparison operators: ==, !=, <, >, <=, >=
-            (
-                BinaryOperator::Equals
-                | BinaryOperator::NotEquals
-                | BinaryOperator::Less
-                | BinaryOperator::Greater
-                | BinaryOperator::LessOrEqual
-                | BinaryOperator::GreaterOrEqual,
-                DataType::Int { .. }
-                | DataType::Short { .. }
-                | DataType::Long { .. }
-                | DataType::Float
-                | DataType::Double
-                | DataType::Char { .. }
-                | DataType::Bool,
-            ) => true,
-
-            // Logical operators: &&, || — any scalar operand is testable against zero
-            (
-                BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr,
-                DataType::Int { .. }
-                | DataType::Short { .. }
-                | DataType::Long { .. }
-                | DataType::Char { .. }
-                | DataType::Bool,
-            ) => true,
-
-            _ => Self::is_assignment_operator(operator),
+            BinaryOperator::LogicalAnd
+            | BinaryOperator::LogicalOr
+            | BinaryOperator::Equals
+            | BinaryOperator::NotEquals
+            | BinaryOperator::Less
+            | BinaryOperator::LessOrEqual
+            | BinaryOperator::Greater
+            | BinaryOperator::GreaterOrEqual => operand_type.is_scalar(),
         }
-    }
-
-    fn is_assignment_operator(op: &BinaryOperator) -> bool {
-        matches!(
-            op,
-            BinaryOperator::Assign
-                | BinaryOperator::AssignMultiply
-                | BinaryOperator::AssignDivide
-                | BinaryOperator::AssignModulo
-                | BinaryOperator::AssignPlus
-                | BinaryOperator::AssignMinus
-                | BinaryOperator::AssignShiftLeft
-                | BinaryOperator::AssignShiftRight
-                | BinaryOperator::AssignBitwiseAnd
-                | BinaryOperator::AssignBitwiseXor
-                | BinaryOperator::AssignBitwiseOr
-        )
     }
 }

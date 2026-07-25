@@ -78,7 +78,7 @@ fn keyword2declspec(keyword: &Keyword) -> Option<DeclarationSpecifier> {
 fn token2unaryop(token: &TokenType) -> Option<UnaryOperator> {
     let unaryop = match token {
         TokenType::BitwiseAndOperator => UnaryOperator::Address,
-        TokenType::Asterisk => UnaryOperator::Indirection,
+        TokenType::Asterisk => UnaryOperator::Dereference,
         TokenType::Plus => UnaryOperator::Plus,
         TokenType::Minus => UnaryOperator::Minus,
         TokenType::BitwiseComplimentOperator => UnaryOperator::Complement,
@@ -89,21 +89,22 @@ fn token2unaryop(token: &TokenType) -> Option<UnaryOperator> {
 }
 
 /// Token -> Assignment Binary Operator
-fn token2asgnbinaryop(token: &TokenType) -> Option<BinaryOperator> {
+fn token_to_assign_operator(token: &TokenType) -> Option<AssignOperator> {
     let binaryop = match token {
-        TokenType::Equals => BinaryOperator::Assign,
-        TokenType::PlusEquals => BinaryOperator::AssignPlus,
-        TokenType::MinusEquals => BinaryOperator::AssignMinus,
-        TokenType::AsteriskEquals => BinaryOperator::AssignMultiply,
-        TokenType::SlashEquals => BinaryOperator::AssignDivide,
-        TokenType::PercentEquals => BinaryOperator::AssignModulo,
-        TokenType::LeftShiftEqualsOperator => BinaryOperator::AssignShiftLeft,
-        TokenType::RightShiftEqualsOperator => BinaryOperator::AssignShiftRight,
-        TokenType::BitwiseOrEqualsOperator => BinaryOperator::AssignBitwiseOr,
-        TokenType::BitwiseAndEqualsOperator => BinaryOperator::AssignBitwiseAnd,
-        TokenType::ExclusiveOrEqualsOperator => BinaryOperator::AssignBitwiseXor,
+        TokenType::Equals => AssignOperator::Assign,
+        TokenType::PlusEquals => AssignOperator::AssignPlus,
+        TokenType::MinusEquals => AssignOperator::AssignMinus,
+        TokenType::AsteriskEquals => AssignOperator::AssignMultiply,
+        TokenType::SlashEquals => AssignOperator::AssignDivide,
+        TokenType::PercentEquals => AssignOperator::AssignModulo,
+        TokenType::LeftShiftEqualsOperator => AssignOperator::AssignShiftLeft,
+        TokenType::RightShiftEqualsOperator => AssignOperator::AssignShiftRight,
+        TokenType::BitwiseOrEqualsOperator => AssignOperator::AssignBitwiseOr,
+        TokenType::BitwiseAndEqualsOperator => AssignOperator::AssignBitwiseAnd,
+        TokenType::ExclusiveOrEqualsOperator => AssignOperator::AssignBitwiseXor,
         _ => return None,
     };
+
     Some(binaryop)
 }
 
@@ -119,9 +120,14 @@ fn is_expr_unary(expression: &Expression) -> bool {
         | Expression::Member(_)
         | Expression::Call(_)
         | Expression::Cast(_)
-        | Expression::ImplicitCast(_) => true,
-        Expression::TernaryOperator(_) | Expression::Comma(_) | Expression::Empty => false,
-        Expression::BinaryOperator(expr) => expr.operator.node == BinaryOperator::Index,
+        | Expression::ImplicitCast(_)
+        | Expression::ArraySubscript(_) => true,
+
+        Expression::AssignOperator(_)
+        | Expression::TernaryOperator(_)
+        | Expression::Comma(_)
+        | Expression::Empty
+        | Expression::BinaryOperator(_) => false,
     }
 }
 
@@ -723,7 +729,7 @@ impl<'a> Parser<'a> {
                                 // Create and return the If statement
                                 Ok(Node::new(
                                     Statement::IfStatement(Box::new(IfStatement {
-                                        expression: if_expr,
+                                        condition: if_expr,
                                         if_block,
                                         else_block,
                                     })),
@@ -772,7 +778,7 @@ impl<'a> Parser<'a> {
 
                                 Ok(Node::new(
                                     Statement::WhileStatement(Box::new(WhileStatement {
-                                        expression,
+                                        condition: expression,
                                         statement: block,
                                     })),
                                     span,
@@ -803,7 +809,7 @@ impl<'a> Parser<'a> {
                                 Ok(Node::new(
                                     Statement::DoWhileStatement(Box::new(WhileStatement {
                                         statement: dostmt,
-                                        expression: doexpr,
+                                        condition: doexpr,
                                     })),
                                     span,
                                 ))
@@ -1193,7 +1199,7 @@ impl<'a> Parser<'a> {
             // Parse the second production of the grammar
             if let Some((token, start, end)) = self.tokenizer.peek_token()? {
                 // Check if the token is some assignment operator
-                if let Some(operator) = token2asgnbinaryop(&token) {
+                if let Some(operator) = token_to_assign_operator(&token) {
                     // If yes then consume that token
                     self.tokenizer.next_token()?;
                     // And then parse another assignment expression
@@ -1203,10 +1209,12 @@ impl<'a> Parser<'a> {
                     let span = Span::new(expression.span.start, rhs.span.end);
                     // Create a binary operator expression with the assignment operator and lhs and rhs
                     return Ok(Node::new(
-                        Expression::BinaryOperator(Box::new(BinaryOperatorExpression {
+                        Expression::AssignOperator(Box::new(AssignOperatorExpression {
                             operator: Node::new(operator, Span::new(start, end)),
                             lhs: expression,
                             rhs,
+                            uac_type: None,
+                            should_cast: false,
                         })),
                         span,
                     ));
@@ -2115,10 +2123,9 @@ impl<'a> Parser<'a> {
                     // Create and return a BinaryOperatorExpression with Indexing `[]` as the binary operator
                     // And the already passed expression as the LHS and index_expr as RHS
                     expression = Node::new(
-                        Expression::BinaryOperator(Box::new(BinaryOperatorExpression {
-                            operator: Node::new(BinaryOperator::Index, Span::new(start, end)),
-                            lhs: expression,
-                            rhs: index_expr,
+                        Expression::ArraySubscript(Box::new(ArraySubscriptExpression {
+                            array: expression,
+                            subscript: index_expr,
                         })),
                         span,
                     );

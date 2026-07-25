@@ -1,6 +1,6 @@
-use colored::Colorize;
+use colored::{Color, Colorize};
 use fbcc::compiler::Compiler;
-use fbcc::core::errors::{CompilerError, CompilerErrorKind};
+use fbcc::core::errors::{CompilerError, CompilerErrorKind, Diagnostic, DiagnosticKind};
 use std::io;
 use std::{
     fs,
@@ -40,9 +40,9 @@ fn parse_cli(args: Vec<String>) -> Result<CliOptions, io::Error> {
             "--dump-asm" => cli_options.dump_asm = true,
             "--emit-asm" => cli_options.emit_asm = true,
             "-o" => {
-                let path = args.next().ok_or_else(|| {
-                    io::Error::new(io::ErrorKind::InvalidInput, "-o requires a path argument")
-                })?;
+                let path = args
+                    .next()
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "-o requires a path argument"))?;
                 cli_options.output = Some(PathBuf::from(path));
             }
 
@@ -63,22 +63,24 @@ fn parse_cli(args: Vec<String>) -> Result<CliOptions, io::Error> {
     Ok(cli_options)
 }
 
-fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
-    let (line, col) = error.location.map_or((0, 0), |loc| (loc.line, loc.column));
+fn format_diagnostic(
+    severity: &str,
+    accent: Color,
+    kind_str: &str,
+    message: &str,
+    line: usize,
+    col: usize,
+    path: &Path,
+    line_str: &str,
+) -> String {
     let file = path.display();
     let mut out = String::new();
-    let kind_str = match error.kind {
-        CompilerErrorKind::InternalError => "internal error",
-        CompilerErrorKind::TokenizerError => "tokenizer error",
-        CompilerErrorKind::SyntaxError => "syntax error",
-        CompilerErrorKind::SemanticError => "semantic error",
-    };
 
-    // Final error line
+    // Final severity line
     out += &format!(
         "{}: {}\n",
-        "error".bold().red(),
-        format!("[{}] {}", kind_str, error.message).yellow()
+        severity.bold().color(accent),
+        format!("[{}] {}", kind_str, message).yellow()
     );
 
     // Label line
@@ -97,29 +99,65 @@ fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
     underline.push_str(&" ".repeat(col.saturating_sub(1)));
     underline.push('^');
 
-    out += &format!("   {} {}\n", "     |".bright_black(), underline.red());
+    out += &format!("   {} {}\n", "     |".bright_black(), underline.color(accent));
 
     out
 }
 
+fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
+    let (line, col) = error.location.map_or((0, 0), |loc| (loc.line, loc.column));
+    let kind_str = match error.kind {
+        CompilerErrorKind::InternalError => "internal error",
+        CompilerErrorKind::TokenizerError => "tokenizer error",
+        CompilerErrorKind::SyntaxError => "syntax error",
+        CompilerErrorKind::SemanticError => "semantic error",
+    };
+
+    format_diagnostic("error", Color::Red, kind_str, &error.message, line, col, path, line_str)
+}
+
+fn format_warning(warning: &Diagnostic, path: &Path, line_str: &str) -> String {
+    let (line, col) = warning.span.map_or((0, 0), |span| (span.start.line, span.start.column));
+    let kind_str = match warning.kind {
+        DiagnosticKind::Warning => "warning",
+    };
+
+    format_diagnostic(
+        "warning",
+        Color::Yellow,
+        kind_str,
+        &warning.message,
+        line,
+        col,
+        path,
+        line_str,
+    )
+}
+
 fn compile_file(path: &PathBuf, cli_options: &CliOptions) -> bool {
     let source = fs::read_to_string(path).unwrap();
-    let result = Compiler::new().compile(
+    let (diagnostics, result) = Compiler::compile(
         source.as_str(),
         cli_options.dump_ast,
         cli_options.dump_ir,
         cli_options.dump_asm,
     );
 
+    // Print any warnings collected during compilation (non-fatal).
+    for warning in &diagnostics {
+        let line = warning
+            .span
+            .and_then(|span| source.lines().nth(span.start.line.saturating_sub(1)))
+            .unwrap_or("");
+        eprintln!("{}", format_warning(warning, path, line));
+    }
+
     match result {
-        Ok(asm) => {
+        Ok(assembly) => {
             // Write the `.s` when asked: `-o <path>`, else default to `<input>.s`.
             if cli_options.emit_asm || cli_options.output.is_some() {
-                let out_path = cli_options
-                    .output
-                    .clone()
-                    .unwrap_or_else(|| path.with_extension("s"));
-                if let Err(e) = fs::write(&out_path, asm) {
+                let out_path = cli_options.output.clone().unwrap_or_else(|| path.with_extension("s"));
+                if let Err(e) = fs::write(&out_path, assembly) {
                     eprintln!("failed to write {}: {e}", out_path.display());
                     return false;
                 }
