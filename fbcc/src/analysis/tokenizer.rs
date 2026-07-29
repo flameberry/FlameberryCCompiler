@@ -449,7 +449,7 @@ impl<'a> Tokenizer<'a> {
             _ => Err(CompilerError {
                 kind: CompilerErrorKind::TokenizerError,
                 message: format!("Unexpected token: {}", next),
-                location: None,
+                span: None,
             }),
         }
     }
@@ -472,7 +472,7 @@ impl<'a> Tokenizer<'a> {
                                                 "Invalid suffix: `{}` to a floating point constant",
                                                 suffix.as_str()
                                             ),
-                                            location: None, // TODO: Give the right location
+                                            span: None, // TODO: Give the right location
                                         });
                                     }
                                 },
@@ -501,7 +501,7 @@ impl<'a> Tokenizer<'a> {
                                                 "Expected an integer suffix, instead got `{}`",
                                                 suffix.as_str()
                                             ),
-                                            location: None, // TODO: Give the right location
+                                            span: None, // TODO: Give the right location
                                         });
                                     }
                                 },
@@ -528,7 +528,7 @@ impl<'a> Tokenizer<'a> {
             _ => Err(CompilerError {
                 kind: CompilerErrorKind::TokenizerError,
                 message: format!("A single quoted literal can only have 1 character and not: {}", ch),
-                location: None,
+                span: None,
             }),
         }
     }
@@ -541,7 +541,7 @@ impl<'a> Tokenizer<'a> {
             _ => Err(CompilerError {
                 kind: CompilerErrorKind::TokenizerError,
                 message: "Missing \" in a quoted string literal".to_string(),
-                location: None,
+                span: None,
             }),
         }
     }

@@ -244,6 +244,15 @@ pub enum Expression {
     Comma(Vec<Node<Expression>>),
 }
 
+#[derive(Debug, Clone, Default)]
+pub enum ExpressionValueType {
+    #[default]
+    None,
+    RValue,
+    LValue,
+    ModifiableLValue,
+}
+
 #[derive(Debug, Clone)]
 pub enum FunctionSpecifier {
     Inline,

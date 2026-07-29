@@ -43,7 +43,7 @@ impl Arm64AsmEmitter {
             return Err(CompilerError {
                 kind: CompilerErrorKind::InternalError,
                 message: "function call with more than 8 arguments is not supported".to_string(),
-                location: None,
+                span: None,
             });
         }
 
@@ -167,7 +167,7 @@ impl Arm64AsmEmitter {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::InternalError,
                             message: "function call with more than 8 arguments is not supported".to_string(),
-                            location: None,
+                            span: None,
                         });
                     }
 

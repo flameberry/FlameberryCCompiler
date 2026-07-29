@@ -7,9 +7,8 @@ use crate::{
             AssignOperator, BinaryOperator,
             BlockItem::{self},
             Declarator::{self},
-            Expression::{self},
-            ExternalDeclaration, ForInitializer, FunctionDefinition, Initializer, Statement, TranslationUnit,
-            UnaryOperator,
+            Expression, ExternalDeclaration, ForInitializer, FunctionDefinition, Initializer, Statement,
+            TranslationUnit, UnaryOperator,
         },
         node::{Node, Span},
     },
@@ -84,106 +83,6 @@ pub enum IrStatement {
         args: Vec<Operand>,
     },
     Ret(Operand),
-}
-
-impl fmt::Display for SlotID {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "r{}", self.0)
-    }
-}
-
-impl fmt::Display for Operand {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Operand::Const(value) => write!(f, "{value}"),
-            Operand::Var(slot) => write!(f, "{slot}"),
-        }
-    }
-}
-
-impl fmt::Display for BinaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let symbol = match self {
-            BinaryOp::Add => "+",
-            BinaryOp::Sub => "-",
-            BinaryOp::Mul => "*",
-            BinaryOp::Div => "/",
-            BinaryOp::Mod => "%",
-            BinaryOp::Lt => "<",
-            BinaryOp::Le => "<=",
-            BinaryOp::Gt => ">",
-            BinaryOp::Ge => ">=",
-            BinaryOp::Eq => "==",
-            BinaryOp::NEq => "!=",
-            BinaryOp::And => "&",
-            BinaryOp::Or => "|",
-            BinaryOp::Xor => "^",
-            BinaryOp::LShift => "<<",
-            BinaryOp::RShift => ">>",
-        };
-        write!(f, "{symbol}")
-    }
-}
-
-impl fmt::Display for UnaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let symbol = match self {
-            UnaryOp::Minus => "-",
-            UnaryOp::Comp => "~",
-            UnaryOp::Not => "!",
-        };
-        write!(f, "{symbol}")
-    }
-}
-
-impl fmt::Display for IrStatement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IrStatement::BinaryOp { dst, op, l, r } => write!(f, "{dst} = {l} {op} {r}"),
-            IrStatement::UnaryOp { dst, op, src } => write!(f, "{dst} = {op}{src}"),
-            IrStatement::Copy { dst, src } => write!(f, "{dst} = {src}"),
-            IrStatement::Label(id) => write!(f, "L{id}:"),
-            IrStatement::Jmp(target) => write!(f, "jmp L{target}"),
-            IrStatement::JmpIfZero { cond, target } => write!(f, "jz {cond}, L{target}"),
-            IrStatement::Call { dst, name, args } => {
-                if let Some(dst) = dst {
-                    write!(f, "{dst} = ")?;
-                }
-                write!(f, "call {name}(")?;
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{arg}")?;
-                }
-                write!(f, ")")
-            }
-            IrStatement::Ret(value) => write!(f, "ret {value}"),
-        }
-    }
-}
-
-impl fmt::Display for IrFunction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Header: `func name(r0, r1) [frame=N]:`
-        write!(f, "func {}(", self.name)?;
-        for (i, param) in self.params.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{param}")?;
-        }
-        writeln!(f, ") [frame={}]:", self.framesize)?;
-
-        // Body: statements indented, labels kept at the margin so they stand out.
-        for statement in &self.body {
-            match statement {
-                IrStatement::Label(_) => writeln!(f, "{statement}")?,
-                _ => writeln!(f, "    {statement}")?,
-            }
-        }
-        Ok(())
-    }
 }
 
 pub struct Slot {
@@ -276,7 +175,7 @@ impl IrEmitter {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::InternalError,
                         message: "global variables are not implemented in IR yet".to_string(),
-                        location: Some(extdecl.span.start),
+                        span: Some(extdecl.span),
                     })
                 }
             }
@@ -290,7 +189,7 @@ impl IrEmitter {
             return Err(CompilerError {
                 kind: CompilerErrorKind::SemanticError,
                 message: "function body must be a compound statement".to_string(),
-                location: Some(function.body.span.start),
+                span: Some(function.body.span),
             });
         };
 
@@ -319,7 +218,7 @@ impl IrEmitter {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::InternalError,
                             message: "function-typed parameters are not yet supported".to_string(),
-                            location: Some(param.span.start),
+                            span: Some(param.span),
                         });
                     }
                 },
@@ -540,7 +439,7 @@ impl IrEmitter {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::InternalError,
                         message: "Semantic analyzer should've detected stray break statement".to_string(),
-                        location: Some(span.start),
+                        span: Some(*span),
                     });
                 }
 
@@ -552,7 +451,7 @@ impl IrEmitter {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::InternalError,
                         message: "Semantic analyzer should've detected stray continue statement".to_string(),
-                        location: Some(span.start),
+                        span: Some(*span),
                     });
                 }
 
@@ -569,7 +468,7 @@ impl IrEmitter {
                 return Err(CompilerError {
                     kind: CompilerErrorKind::InternalError,
                     message: "this statement is not supported by IR lowering yet".to_string(),
-                    location: Some(span.start),
+                    span: Some(*span),
                 })
             }
         }
@@ -587,7 +486,7 @@ impl IrEmitter {
                 let slot = lookup(scopes, identifier).ok_or_else(|| CompilerError {
                     kind: CompilerErrorKind::InternalError,
                     message: format!("undeclared identifier `{identifier}` reached IR lowering"),
-                    location: None,
+                    span: None,
                 })?;
                 return Ok((Operand::Var(slot), Vec::new()));
             }
@@ -601,7 +500,7 @@ impl IrEmitter {
                             return Err(CompilerError {
                                 kind: CompilerErrorKind::SemanticError,
                                 message: format!("integer constant `{integer}` does not fit in `int`"),
-                                location: None,
+                                span: None,
                             });
                         }
                         return Ok((Operand::Const(integer.clone()), Vec::new()));
@@ -610,7 +509,7 @@ impl IrEmitter {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::InternalError,
                             message: format!("integer constant `{:?}` is not supported by IR lowering yet", other),
-                            location: None,
+                            span: None,
                         })
                     }
                 },
@@ -618,7 +517,7 @@ impl IrEmitter {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::InternalError,
                         message: format!("constant `{:?}` is not supported by IR lowering yet", other),
-                        location: None,
+                        span: None,
                     })
                 }
             },
@@ -639,7 +538,7 @@ impl IrEmitter {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::InternalError,
                             message: format!("unary operator `{op}` is not supported by IR lowering yet"),
-                            location: Some(unaryexpr.operator.span.start),
+                            span: Some(unaryexpr.operator.span),
                         })
                     }
                 };
@@ -805,7 +704,7 @@ impl IrEmitter {
                     Err(CompilerError {
                         kind: CompilerErrorKind::SemanticError,
                         message: format!("lhs of an assignment expression must be an lvalue"),
-                        location: Some(assign_expr.operator.span.start),
+                        span: Some(assign_expr.operator.span),
                     })
                 }
             }
@@ -871,7 +770,7 @@ impl IrEmitter {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::InternalError,
                             message: format!("unsupported implicit cast to `{}`", cast.target_type),
-                            location: None,
+                            span: None,
                         })
                     }
                 }
@@ -885,7 +784,7 @@ impl IrEmitter {
                             kind: CompilerErrorKind::InternalError,
                             message: "callee expressions other than an identifier expression is not supported"
                                 .to_string(),
-                            location: Some(callexpr.callee.span.start),
+                            span: Some(callexpr.callee.span),
                         })
                     }
                 };
@@ -911,13 +810,117 @@ impl IrEmitter {
             Expression::Empty => Err(CompilerError {
                 kind: CompilerErrorKind::InternalError,
                 message: "empty expression reached IR lowering".to_string(),
-                location: None,
+                span: None,
             }),
             _ => Err(CompilerError {
                 kind: CompilerErrorKind::InternalError,
                 message: format!("emit_expr not implemented for {:?} yet", expr),
-                location: None,
+                span: None,
             }),
         }
+    }
+}
+
+// -----------------------------------------------------------
+// Display implementations
+// -----------------------------------------------------------
+
+impl fmt::Display for SlotID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "r{}", self.0)
+    }
+}
+
+impl fmt::Display for Operand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Operand::Const(value) => write!(f, "{value}"),
+            Operand::Var(slot) => write!(f, "{slot}"),
+        }
+    }
+}
+
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let symbol = match self {
+            BinaryOp::Add => "+",
+            BinaryOp::Sub => "-",
+            BinaryOp::Mul => "*",
+            BinaryOp::Div => "/",
+            BinaryOp::Mod => "%",
+            BinaryOp::Lt => "<",
+            BinaryOp::Le => "<=",
+            BinaryOp::Gt => ">",
+            BinaryOp::Ge => ">=",
+            BinaryOp::Eq => "==",
+            BinaryOp::NEq => "!=",
+            BinaryOp::And => "&",
+            BinaryOp::Or => "|",
+            BinaryOp::Xor => "^",
+            BinaryOp::LShift => "<<",
+            BinaryOp::RShift => ">>",
+        };
+        write!(f, "{symbol}")
+    }
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let symbol = match self {
+            UnaryOp::Minus => "-",
+            UnaryOp::Comp => "~",
+            UnaryOp::Not => "!",
+        };
+        write!(f, "{symbol}")
+    }
+}
+
+impl fmt::Display for IrStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IrStatement::BinaryOp { dst, op, l, r } => write!(f, "{dst} = {l} {op} {r}"),
+            IrStatement::UnaryOp { dst, op, src } => write!(f, "{dst} = {op}{src}"),
+            IrStatement::Copy { dst, src } => write!(f, "{dst} = {src}"),
+            IrStatement::Label(id) => write!(f, "L{id}:"),
+            IrStatement::Jmp(target) => write!(f, "jmp L{target}"),
+            IrStatement::JmpIfZero { cond, target } => write!(f, "jz {cond}, L{target}"),
+            IrStatement::Call { dst, name, args } => {
+                if let Some(dst) = dst {
+                    write!(f, "{dst} = ")?;
+                }
+                write!(f, "call {name}(")?;
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{arg}")?;
+                }
+                write!(f, ")")
+            }
+            IrStatement::Ret(value) => write!(f, "ret {value}"),
+        }
+    }
+}
+
+impl fmt::Display for IrFunction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Header: `func name(r0, r1) [frame=N]:`
+        write!(f, "func {}(", self.name)?;
+        for (i, param) in self.params.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{param}")?;
+        }
+        writeln!(f, ") [frame={}]:", self.framesize)?;
+
+        // Body: statements indented, labels kept at the margin so they stand out.
+        for statement in &self.body {
+            match statement {
+                IrStatement::Label(_) => writeln!(f, "{statement}")?,
+                _ => writeln!(f, "    {statement}")?,
+            }
+        }
+        Ok(())
     }
 }

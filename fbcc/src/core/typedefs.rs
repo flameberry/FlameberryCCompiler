@@ -1,6 +1,8 @@
 use std::fmt;
 
-use crate::analysis::ast::{DeclarationSpecifier, StorageClassFlags, TypeName, TypeQualifier, TypeSpecifier};
+use crate::analysis::ast::{
+    BinaryOperator, DeclarationSpecifier, StorageClassFlags, TypeName, TypeQualifier, TypeSpecifier, UnaryOperator,
+};
 use crate::analysis::node::Node;
 use crate::core::errors::{CompilerError, CompilerErrorKind};
 
@@ -113,6 +115,44 @@ impl DataType {
     pub fn is_pointer(&self) -> bool {
         matches!(self, DataType::Pointer { .. })
     }
+
+    pub fn is_compatible_with_binary_operator(&self, operator: &BinaryOperator) -> bool {
+        match operator {
+            BinaryOperator::Plus | BinaryOperator::Minus | BinaryOperator::Multiply | BinaryOperator::Divide => {
+                self.is_arithmetic()
+            }
+
+            BinaryOperator::Modulo
+            | BinaryOperator::BitwiseAnd
+            | BinaryOperator::BitwiseOr
+            | BinaryOperator::BitwiseXor
+            | BinaryOperator::ShiftLeft
+            | BinaryOperator::ShiftRight => self.is_integer(),
+
+            BinaryOperator::LogicalAnd
+            | BinaryOperator::LogicalOr
+            | BinaryOperator::Equals
+            | BinaryOperator::NotEquals
+            | BinaryOperator::Less
+            | BinaryOperator::LessOrEqual
+            | BinaryOperator::Greater
+            | BinaryOperator::GreaterOrEqual => self.is_scalar(),
+        }
+    }
+
+    pub fn is_compatible_with_unary_operator(&self, operator: &UnaryOperator) -> bool {
+        match operator {
+            UnaryOperator::PreIncrement
+            | UnaryOperator::PostIncrement
+            | UnaryOperator::PreDecrement
+            | UnaryOperator::PostDecrement => self.is_integer() || self.is_pointer(),
+
+            UnaryOperator::Plus | UnaryOperator::Minus | UnaryOperator::Negate => self.is_arithmetic(),
+            UnaryOperator::Complement => self.is_integer(),
+            UnaryOperator::Address => true,
+            UnaryOperator::Dereference => self.is_pointer(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
@@ -167,7 +207,7 @@ impl Type {
                 return Err(CompilerError {
                     kind: CompilerErrorKind::InternalError,
                     message: format!("size() is not yet implemented for type: {other:?}"),
-                    location: None,
+                    span: None,
                 });
             }
         };
@@ -196,7 +236,7 @@ impl Type {
                 return Err(CompilerError {
                     kind: CompilerErrorKind::InternalError,
                     message: format!("alignment() is not yet implemented for type: {other:?}"),
-                    location: None,
+                    span: None,
                 });
             }
         };
@@ -234,7 +274,7 @@ impl Type {
                                 kind: CompilerErrorKind::SemanticError,
                                 message: "Cannot combine `signed` keyword with previous declaration specifier"
                                     .to_string(),
-                                location: Some(decl_spec.span.start),
+                                span: Some(decl_spec.span),
                             });
                         }
                         signed_keyword = true;
@@ -246,7 +286,7 @@ impl Type {
                                 kind: CompilerErrorKind::SemanticError,
                                 message: "Cannot combine `unsigned` keyword with previous declaration specifier"
                                     .to_string(),
-                                location: Some(decl_spec.span.start),
+                                span: Some(decl_spec.span),
                             });
                         }
                         unsigned_keyword = true;
@@ -327,7 +367,7 @@ impl Type {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::SemanticError,
                             message: "long long double is an invalid type.".to_string(),
-                            location: Some(declaration_specifiers.first().unwrap().span.start),
+                            span: Some(declaration_specifiers.first().unwrap().span),
                         }); // long long double x; <-- Not Allowed
                     } else {
                         // long long int
@@ -338,7 +378,7 @@ impl Type {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SemanticError,
                         message: "Invalid declaration containing more than 2 long specifiers.".to_string(),
-                        location: Some(declaration_specifiers.first().unwrap().span.start),
+                        span: Some(declaration_specifiers.first().unwrap().span),
                     }); // long long long x;
                 }
             }
@@ -350,7 +390,7 @@ impl Type {
             Err(CompilerError {
                 kind: CompilerErrorKind::SemanticError,
                 message: "Missing primitive type specifier".to_string(),
-                location: Some(declaration_specifiers.first().unwrap().span.start),
+                span: Some(declaration_specifiers.first().unwrap().span),
             })
         }
     }
@@ -402,7 +442,7 @@ impl Type {
             return Err(CompilerError {
                 kind: CompilerErrorKind::SemanticError,
                 message: format!("expected arithmetic operands, instead got {}, {}", x, y),
-                location: None,
+                span: None,
             });
         }
 
@@ -480,7 +520,7 @@ impl Type {
             Err(CompilerError {
                 kind: CompilerErrorKind::InternalError,
                 message: format!("common_type_for_uac: during integer promotion types of operands should've been integers, instead are {}, {}", x, y),
-                location: None
+                span: None
             })
         }
     }

@@ -1,6 +1,6 @@
 use std::{fmt, ops::Add};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Location {
     pub line: usize,   // The line number in the source code
     pub column: usize, // The offset from the start of the line
@@ -34,7 +34,7 @@ impl Location {
 }
 
 // Byte offset in the input buffer
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct Span {
     pub start: Location,
     pub end: Location,
@@ -43,13 +43,6 @@ pub struct Span {
 impl Span {
     pub fn new(start: Location, end: Location) -> Self {
         Span { start, end }
-    }
-
-    pub fn none() -> Self {
-        Span {
-            start: Location::none(),
-            end: Location::none(),
-        }
     }
 }
 

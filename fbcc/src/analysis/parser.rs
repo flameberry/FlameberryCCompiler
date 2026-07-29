@@ -164,7 +164,7 @@ impl<'a> Parser<'a> {
                             return Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
                                 message: "Unexpected `{`, expected a semicolon".to_string(),
-                                location: Some(start),
+                                span: Some(Span::new(start, end)),
                             });
                         }
 
@@ -208,7 +208,7 @@ impl<'a> Parser<'a> {
                                 kind: CompilerErrorKind::SyntaxError,
                                 message: "Unexpected token: `{`, statement is not a valid function declaration"
                                     .to_string(),
-                                location: Some(start),
+                                span: Some(Span::new(start, end)),
                             });
                         }
                     }
@@ -227,7 +227,7 @@ impl<'a> Parser<'a> {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::SyntaxError,
                             message: format!("Expected a `;` or `{{` instead got: {:?}", token),
-                            location: Some(start),
+                            span: Some(Span::new(start, end)),
                         })
                     }
                 },
@@ -235,7 +235,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected a `;` or `{` instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -260,7 +260,7 @@ impl<'a> Parser<'a> {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::SyntaxError,
                             message: format!("Unexpected keyword: {:?}", keyword),
-                            location: Some(start),
+                            span: Some(Span::new(start, end)),
                         })
                     }
                 },
@@ -284,7 +284,7 @@ impl<'a> Parser<'a> {
                                 "Unexpected Identifer: `{}`, Expected a Declaration Specifier",
                                 identifier
                             ),
-                            location: Some(start),
+                            span: Some(Span::new(start, end)),
                         });
                     }
                 }
@@ -296,7 +296,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: format!("Unexpected Token: {:?}", token),
-                        location: Some(start),
+                        span: Some(Span::new(start, end)),
                     })
                 }
             }
@@ -305,7 +305,7 @@ impl<'a> Parser<'a> {
         Err(CompilerError {
             kind: CompilerErrorKind::SyntaxError,
             message: "Unexpected end of file".to_string(),
-            location: None,
+            span: None,
         })
     }
 
@@ -371,7 +371,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected a semicolon, or an init-declarator, instead found end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -409,7 +409,7 @@ impl<'a> Parser<'a> {
             None => Err(CompilerError {
                 kind: CompilerErrorKind::SyntaxError,
                 message: "Expected assignment expression or an initializer list, instead got end of file".to_string(),
-                location: None,
+                span: None,
             }),
         }
     }
@@ -450,12 +450,12 @@ impl<'a> Parser<'a> {
                         Some((next, start, _)) => return Err(CompilerError{
                             kind: CompilerErrorKind::SyntaxError,
                             message: format!("Unexpected token: {:?}, expected a `(` (Function Declarator), or `;` (Direct Declarator)", next),
-                            location: Some(start)
+                            span: Some(Span::new(start, end))
                         }),
                         None => return Err(CompilerError{
                             kind: CompilerErrorKind::SyntaxError,
                             message: "Unexpected token, expected a `(` (Function Declarator), or `;` (Direct Declarator), instead encountered an End of File".to_string(),
-                            location: None
+                            span: None
                         })
                     }
                 }
@@ -518,7 +518,7 @@ impl<'a> Parser<'a> {
                             kind: CompilerErrorKind::SyntaxError,
                             message: "Expected type specifier for parameter declaration after `,` instead got `)`"
                                 .to_string(),
-                            location: None,
+                            span: None,
                         });
                     }
                     // Return the parameters
@@ -531,7 +531,7 @@ impl<'a> Parser<'a> {
             None => Err(CompilerError {
                 kind: CompilerErrorKind::SyntaxError,
                 message: "Missing `)` in the function declaration/definition".to_string(),
-                location: None,
+                span: None,
             }),
         }
     }
@@ -552,7 +552,7 @@ impl<'a> Parser<'a> {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::SyntaxError,
                             message: format!("Unexpected keyword: {:?}", keyword),
-                            location: Some(start),
+                            span: Some(Span::new(start, end)),
                         })
                     }
                 },
@@ -590,7 +590,7 @@ impl<'a> Parser<'a> {
                                 "Unexpected Identifer: `{}`, Expected a Declaration Specifier",
                                 identifier
                             ),
-                            location: Some(start),
+                            span: Some(Span::new(start, end)),
                         });
                     }
                 }
@@ -618,7 +618,7 @@ impl<'a> Parser<'a> {
                             kind: CompilerErrorKind::SyntaxError,
                             message: "Expected a type specifier for parameter declaration, instead found: `,` or `)`"
                                 .to_string(),
-                            location: Some(start),
+                            span: Some(Span::new(start, end)),
                         });
                     }
                 }
@@ -630,7 +630,7 @@ impl<'a> Parser<'a> {
         Err(CompilerError {
             kind: CompilerErrorKind::SyntaxError,
             message: "Expected a type specifier, or `,` or `)`".to_string(),
-            location: None,
+            span: None,
         })
     }
 
@@ -820,7 +820,7 @@ impl<'a> Parser<'a> {
 
                                 let forinitializer: Node<ForInitializer>;
                                 match self.tokenizer.peek_token()? {
-                                    Some((token, peek_start, _)) => {
+                                    Some((token, peek_start, peek_end)) => {
                                         // Check if the next token is a DeclarationSpecifier
                                         if let TokenType::Keyword(keyword) = token {
                                             if keyword2declspec(&keyword).is_some() {
@@ -841,7 +841,7 @@ impl<'a> Parser<'a> {
                                                 return Err(CompilerError {
                                                     kind: CompilerErrorKind::SyntaxError,
                                                     message: format!("Expected a declaration specifier or an expression, instead got unexpected Keyword: {:?}", keyword),
-                                                    location: Some(peek_start)
+                                                    span: Some(Span::new(peek_start, peek_end))
                                                 });
                                             }
                                         } else if token == TokenType::Semicolon {
@@ -872,7 +872,7 @@ impl<'a> Parser<'a> {
                                         return Err(CompilerError {
                                             kind: CompilerErrorKind::SyntaxError,
                                             message: "Expected a for initializer, instead got end of file".to_string(),
-                                            location: None,
+                                            span: None,
                                         });
                                     }
                                 }
@@ -970,12 +970,12 @@ impl<'a> Parser<'a> {
                                     Some((_, start, _)) => Err(CompilerError {
                                         kind: CompilerErrorKind::SyntaxError,
                                         message: "Expected an identifier".to_string(),
-                                        location: Some(start),
+                                        span: Some(Span::new(start, end)),
                                     }),
                                     None => Err(CompilerError {
                                         kind: CompilerErrorKind::SyntaxError,
                                         message: "Expected an identifier, instead got end of file".to_string(),
-                                        location: None,
+                                        span: None,
                                     }),
                                 }
                             }
@@ -994,7 +994,7 @@ impl<'a> Parser<'a> {
                             _ => Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
                                 message: format!("Unexpected start of a statement with keyword: {:?}", keyword),
-                                location: Some(start),
+                                span: Some(Span::new(start, end)),
                             }),
                         }
                     }
@@ -1132,7 +1132,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected a declaration or a statement, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             };
@@ -1269,7 +1269,7 @@ impl<'a> Parser<'a> {
             None => Err(CompilerError {
                 kind: CompilerErrorKind::SyntaxError,
                 message: "Expected expression, instead got end of file".to_string(),
-                location: None,
+                span: None,
             }),
         }
     }
@@ -1309,7 +1309,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected expression, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -1352,7 +1352,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected expression, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -1394,7 +1394,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected expression, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -1436,7 +1436,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected expression, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -1479,7 +1479,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected expression, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -1526,7 +1526,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected expression, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -1582,7 +1582,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected expression, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -1629,7 +1629,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected expression, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -1677,7 +1677,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected expression, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -1728,7 +1728,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: "Expected expression, instead got end of file".to_string(),
-                        location: None,
+                        span: None,
                     })
                 }
             }
@@ -1830,7 +1830,7 @@ impl<'a> Parser<'a> {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::SyntaxError,
                             message: "Unexpected keyword: {}, expected a Specifier-Qualifier".to_string(),
-                            location: Some(start),
+                            span: Some(Span::new(start, end)),
                         })
                     }
                 },
@@ -1842,7 +1842,7 @@ impl<'a> Parser<'a> {
                         return Err(CompilerError {
                             kind: CompilerErrorKind::SyntaxError,
                             message: "No specifier-qualifiers are present in type-name".to_string(),
-                            location: Some(start),
+                            span: Some(Span::new(start, end)),
                         });
                     }
 
@@ -1870,7 +1870,7 @@ impl<'a> Parser<'a> {
         Err(CompilerError {
             kind: CompilerErrorKind::SyntaxError,
             message: "Expected a type-name, instead got end of file".to_string(),
-            location: None,
+            span: None,
         })
     }
 
@@ -2012,7 +2012,7 @@ impl<'a> Parser<'a> {
             None => Err(CompilerError {
                 kind: CompilerErrorKind::SyntaxError,
                 message: "Expected an expression, instead got end of file".to_string(),
-                location: None,
+                span: None,
             }),
         }
     }
@@ -2086,7 +2086,7 @@ impl<'a> Parser<'a> {
                                 span,
                             );
                         }
-                        Some((unexpected, unexpected_start, _)) => {
+                        Some((unexpected, unexpected_start, unexpected_end)) => {
                             // This error will occur when there is no identifier specified after dot/arrow operator
                             // struct_instance-> ;
                             // struct_instance.  ;
@@ -2094,7 +2094,7 @@ impl<'a> Parser<'a> {
                             return Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
                                 message: format!("Expected an identifier, instead got {:?}", unexpected),
-                                location: Some(unexpected_start),
+                                span: Some(Span::new(unexpected_start, unexpected_end)),
                             });
                         }
                         None => {
@@ -2105,7 +2105,7 @@ impl<'a> Parser<'a> {
                             return Err(CompilerError {
                                 kind: CompilerErrorKind::SyntaxError,
                                 message: "Expected an identifier, instead got end of file".to_string(),
-                                location: None,
+                                span: None,
                             });
                         }
                     }
@@ -2161,7 +2161,7 @@ impl<'a> Parser<'a> {
         Err(CompilerError {
             kind: CompilerErrorKind::SyntaxError,
             message: "Expected a postfix-expression, instead found end of file".to_string(),
-            location: None,
+            span: None,
         })
     }
 
@@ -2215,7 +2215,7 @@ impl<'a> Parser<'a> {
                 kind: CompilerErrorKind::SyntaxError,
                 message: "Expected assignment expression for argument in the function call after `,` instead got `)`"
                     .to_string(),
-                location: None,
+                span: None,
             });
         }
         // Return the argument expression list
@@ -2264,7 +2264,7 @@ impl<'a> Parser<'a> {
                     return Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: format!("Expected expression, instead found: {:?}", token),
-                        location: Some(start),
+                        span: Some(Span::new(start, end)),
                     })
                 }
             },
@@ -2272,7 +2272,7 @@ impl<'a> Parser<'a> {
                 return Err(CompilerError {
                     kind: CompilerErrorKind::SyntaxError,
                     message: "Expected expression, instead found end of file".to_string(),
-                    location: None,
+                    span: None,
                 })
             }
         };
@@ -2284,7 +2284,7 @@ impl<'a> Parser<'a> {
         F: FnMut(TokenType) -> bool,
     {
         match self.tokenizer.next_token()? {
-            Some((token, start, _)) => {
+            Some((token, start, end)) => {
                 // Token is cloned to avoid borrowing
                 if predicate(token.clone()) {
                     Ok(())
@@ -2292,14 +2292,14 @@ impl<'a> Parser<'a> {
                     Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: format!("Failed to accept token: {:?}, predicate failed", token),
-                        location: Some(start),
+                        span: Some(Span::new(start, end)),
                     })
                 }
             }
             None => Err(CompilerError {
                 kind: CompilerErrorKind::SyntaxError,
                 message: "Expected a token".to_string(),
-                location: None,
+                span: None,
             }),
         }
     }
@@ -2315,14 +2315,14 @@ impl<'a> Parser<'a> {
                     Err(CompilerError {
                         kind: CompilerErrorKind::SyntaxError,
                         message: format!("Expected token: {:?}, instead found: {:?}", tokentype, token),
-                        location: Some(start),
+                        span: Some(Span::new(start, end)),
                     })
                 }
             }
             None => Err(CompilerError {
                 kind: CompilerErrorKind::SyntaxError,
                 message: format!("Expected token: {:?}", tokentype),
-                location: None,
+                span: None,
             }),
         }
     }

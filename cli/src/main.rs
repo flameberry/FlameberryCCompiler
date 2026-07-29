@@ -1,4 +1,5 @@
 use colored::{Color, Colorize};
+use fbcc::analysis::node::Span;
 use fbcc::compiler::Compiler;
 use fbcc::core::errors::{CompilerError, CompilerErrorKind, Diagnostic, DiagnosticKind};
 use std::io;
@@ -68,36 +69,48 @@ fn format_diagnostic(
     accent: Color,
     kind_str: &str,
     message: &str,
-    line: usize,
-    col: usize,
+    span: Span,
     path: &Path,
     line_str: &str,
 ) -> String {
     let file = path.display();
+    let (line, col) = (span.start.line, span.start.column);
     let mut out = String::new();
 
-    // Final severity line
     out += &format!(
         "{}: {}\n",
         severity.bold().color(accent),
         format!("[{}] {}", kind_str, message).yellow()
     );
 
-    // Label line
     out += &format!(
         "  {} {}\n",
         "-->".bright_blue(),
         format!("{file}:{line}:{col}").bold().white()
     );
 
-    // Source code line with gutter
     out += &format!("   {} {}\n", format!("{:>4} |", line).bright_black(), line_str);
 
-    // Underline with caret (1-based to 0-based column fix; saturate so a
-    // synthetic column 0 doesn't underflow and panic)
+    let line_len = line_str.chars().count();
+    let start_idx = col.saturating_sub(1);
+
+    let width = if span.end.line == span.start.line {
+        span.end.column.saturating_sub(span.start.column)
+    } else {
+        line_len.saturating_sub(start_idx)
+    };
+
+    let width = width.min(line_len.saturating_sub(start_idx));
+
     let mut underline = String::new();
-    underline.push_str(&" ".repeat(col.saturating_sub(1)));
+    for ch in line_str.chars().take(start_idx) {
+        underline.push(if ch == '\t' { '\t' } else { ' ' });
+    }
+    // A column past the end of the line still needs its remaining padding.
+    underline.push_str(&" ".repeat(start_idx.saturating_sub(line_len)));
+
     underline.push('^');
+    underline.push_str(&"^".repeat(width.saturating_sub(1)));
 
     out += &format!("   {} {}\n", "     |".bright_black(), underline.color(accent));
 
@@ -105,7 +118,7 @@ fn format_diagnostic(
 }
 
 fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
-    let (line, col) = error.location.map_or((0, 0), |loc| (loc.line, loc.column));
+    let span = error.span.unwrap_or_default();
     let kind_str = match error.kind {
         CompilerErrorKind::InternalError => "internal error",
         CompilerErrorKind::TokenizerError => "tokenizer error",
@@ -113,11 +126,11 @@ fn format_error(error: &CompilerError, path: &Path, line_str: &str) -> String {
         CompilerErrorKind::SemanticError => "semantic error",
     };
 
-    format_diagnostic("error", Color::Red, kind_str, &error.message, line, col, path, line_str)
+    format_diagnostic("error", Color::Red, kind_str, &error.message, span, path, line_str)
 }
 
 fn format_warning(warning: &Diagnostic, path: &Path, line_str: &str) -> String {
-    let (line, col) = warning.span.map_or((0, 0), |span| (span.start.line, span.start.column));
+    let span = warning.span.unwrap_or_default();
     let kind_str = match warning.kind {
         DiagnosticKind::Warning => "warning",
     };
@@ -127,8 +140,7 @@ fn format_warning(warning: &Diagnostic, path: &Path, line_str: &str) -> String {
         Color::Yellow,
         kind_str,
         &warning.message,
-        line,
-        col,
+        span,
         path,
         line_str,
     )
@@ -165,10 +177,10 @@ fn compile_file(path: &PathBuf, cli_options: &CliOptions) -> bool {
             true
         }
         Err(error) => {
-            if let Some(loc) = error.location {
+            if let Some(span) = error.span {
                 // Saturate line 0 and tolerate out-of-range lines so a bogus
                 // location degrades the diagnostic instead of panicking.
-                let line = source.lines().nth(loc.line.saturating_sub(1)).unwrap_or("");
+                let line = source.lines().nth(span.start.line.saturating_sub(1)).unwrap_or("");
                 eprintln!("{}", format_error(&error, path, line));
             } else {
                 eprintln!("error: {}", error.message);

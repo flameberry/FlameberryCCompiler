@@ -116,7 +116,7 @@ impl SymbolTable {
                         "Failed to insert symbol: Duplicate Symbols are not allowed in the Symbol Table.\n{:?}",
                         self.symbolbuffer[idx]
                     ),
-                    location: None,
+                    span: None,
                 }),
             }
         } else {

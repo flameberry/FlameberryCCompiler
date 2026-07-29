@@ -1,4 +1,4 @@
-use crate::analysis::node::{Location, Span};
+use crate::analysis::node::Span;
 
 #[derive(Debug)]
 pub enum CompilerErrorKind {
@@ -12,7 +12,7 @@ pub enum CompilerErrorKind {
 pub struct CompilerError {
     pub kind: CompilerErrorKind,
     pub message: String,
-    pub location: Option<Location>,
+    pub span: Option<Span>,
 }
 
 #[derive(Debug)]
